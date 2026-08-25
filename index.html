@@ -268,7 +268,7 @@
   var ui = { activeTab: 'tests', showAddForm: false, editingName: false, toasts: [] };
   var STATE = {
     tankName: 'My Aquarium',
-    settings: { waterTestIntervalDays: 7, waterChangeIntervalDays: 14 },
+    settings: { waterTestIntervalDays: 7, waterChangeIntervalDays: 14, electricityRate: null },
     waterTests: [], waterChanges: [], fish: [], equipment: [],
     loaded: false
   };
@@ -333,12 +333,17 @@
         { key:'date', label:'Date', type:'date', required:true },
         { key:'item', label:'Item', type:'text', required:true },
         { key:'cost', label:'Cost ($)', type:'number', step:'any', min:'0' },
+        { key:'wattage', label:'Wattage (W)', type:'number', step:'any', min:'0' },
+        { key:'hoursPerDay', label:'Hours/day', type:'number', step:'any', min:'0', max:'24' },
         { key:'notes', label:'Notes', type:'text', wide:true }
       ],
       columns: [
         { key:'date', label:'Date', fmt:'date' },
         { key:'item', label:'Item', text:true },
         { key:'cost', label:'Cost', fmt:'money' },
+        { key:'wattage', label:'Watts', fmt:'watts' },
+        { key:'hoursPerDay', label:'Hrs/day', fmt:'hours' },
+        { key:'estCost', label:'Est. power cost' },
         { key:'notes', label:'Notes', text:true }
       ]
     }
@@ -391,8 +396,35 @@
     if(col.fmt==='date') return fmtDate(val);
     if(col.fmt==='pct') return (val==null||val==='') ? '—' : val+'%';
     if(col.fmt==='money') return (val==null||val==='') ? '—' : '$'+parseFloat(val).toFixed(2);
+    if(col.fmt==='watts') return (val==null||val==='') ? '—' : val+'W';
+    if(col.fmt==='hours') return (val==null||val==='') ? '—' : val+' h/d';
     if(val==null || val==='') return '—';
     return String(val);
+  }
+
+  // Power draw is only ever an estimate: wattage x an assumed hours/day duty
+  // cycle x an average 30.4-day month. A thermostatically-controlled heater
+  // won't run 24/7, so this is a ceiling based on what you tell it, not a
+  // meter reading.
+  function monthlyKwh(row){
+    var w = num(row.wattage), h = num(row.hoursPerDay);
+    if(w==null || h==null) return null;
+    return (w * h * 30.4) / 1000;
+  }
+  function estCostCell(row){
+    var kwh = monthlyKwh(row);
+    if(kwh==null) return '—';
+    var rate = num(STATE.settings.electricityRate);
+    if(rate==null) return escapeHtml(kwh.toFixed(1) + ' kWh/mo');
+    return escapeHtml('$' + (kwh * rate).toFixed(2) + '/mo');
+  }
+  function totalMonthlyPower(equipmentList){
+    var totalKwh = 0, anyDevices = false;
+    equipmentList.forEach(function(e){
+      var kwh = monthlyKwh(e);
+      if(kwh != null){ totalKwh += kwh; anyDevices = true; }
+    });
+    return { totalKwh: totalKwh, anyDevices: anyDevices };
   }
 
   /* ---------------- API ---------------- */
@@ -446,6 +478,7 @@
       STATE.tankName = settings.tank_name || 'My Aquarium';
       STATE.settings.waterTestIntervalDays = parseInt(settings.water_test_interval_days, 10) || 7;
       STATE.settings.waterChangeIntervalDays = parseInt(settings.water_change_interval_days, 10) || 14;
+      STATE.settings.electricityRate = (settings.electricity_rate!=null && settings.electricity_rate!=='') ? parseFloat(settings.electricity_rate) : null;
       STATE.loaded = true;
       saveState = 'idle';
       lastSyncedAt = new Date();
@@ -462,7 +495,7 @@
     if(tabKey === 'tests') return { date:data.date, ph:data.ph, ammonia:data.ammonia, nitrite:data.nitrite, nitrate:data.nitrate, temp:data.temp, notes:data.notes };
     if(tabKey === 'changes') return { date:data.date, percent:data.percent, notes:data.notes };
     if(tabKey === 'fish') return { dateAdded:data.dateAdded, species:data.species, name:data.name, quantity:data.quantity, notes:data.notes };
-    return { date:data.date, item:data.item, cost:data.cost, notes:data.notes };
+    return { date:data.date, item:data.item, cost:data.cost, wattage:data.wattage, hoursPerDay:data.hoursPerDay, notes:data.notes };
   }
 
   function addEntry(tabKey, data){
@@ -518,17 +551,21 @@
     });
   }
 
-  function updateSettings(testInterval, changeInterval){
+  function updateSettings(testInterval, changeInterval, electricityRate){
     var t = parseInt(testInterval,10), c = parseInt(changeInterval,10);
+    var r = parseFloat(electricityRate);
+    var rateValid = !isNaN(r) && r>=0;
     var payload = {};
     if(t>0) payload.water_test_interval_days = t;
     if(c>0) payload.water_change_interval_days = c;
+    if(rateValid) payload.electricity_rate = r;
     if(!Object.keys(payload).length) return;
     saveState = 'saving';
     render();
     apiSend('PUT', '/settings', payload).then(function(){
       if(t>0) STATE.settings.waterTestIntervalDays = t;
       if(c>0) STATE.settings.waterChangeIntervalDays = c;
+      if(rateValid) STATE.settings.electricityRate = r;
       saveState = 'idle';
       lastSyncedAt = new Date();
       render();
@@ -653,7 +690,10 @@
     var rows = sortedByDate(STATE[TAB_STATE_KEY[tabKey]], cfg.fields[0].key);
     var header = cfg.columns.map(function(c){ return csvEscape(c.label); }).join(',');
     var lines = rows.map(function(r){
-      return cfg.columns.map(function(c){ return csvEscape(r[c.key]); }).join(',');
+      return cfg.columns.map(function(c){
+        if(c.key === 'estCost'){ var kwh = monthlyKwh(r); return csvEscape(kwh==null ? '' : kwh.toFixed(2)+' kWh/mo'); }
+        return csvEscape(r[c.key]);
+      }).join(',');
     });
     return [header].concat(lines).join('\r\n');
   }
@@ -754,6 +794,19 @@
 
     var totalSpend = equipment.reduce(function(sum,e){ return sum + (parseFloat(e.cost)||0); }, 0);
 
+    var power = totalMonthlyPower(equipment);
+    var rate = num(STATE.settings.electricityRate);
+    var powerValue, powerSub;
+    if(!power.anyDevices){
+      powerValue = '—'; powerSub = 'Log wattage on a device to estimate';
+    } else if(rate==null){
+      powerValue = power.totalKwh.toFixed(1)+' kWh/mo';
+      powerSub = 'Set your $/kWh rate below for cost';
+    } else {
+      powerValue = '$'+(power.totalKwh*rate).toFixed(2)+'/mo';
+      powerSub = power.totalKwh.toFixed(1)+' kWh/mo estimated';
+    }
+
     return '<section class="stat-grid" aria-label="Tank status overview">' +
       statTile('Last water test', lastTest ? daySummary(testDays) : 'Never', testStatus,
         lastTest ? '' : 'Log your first reading', renderSparkline(tests.slice(0,10).reverse().map(function(t){ return num(t.ph); }))) +
@@ -763,6 +816,7 @@
         speciesCount ? (speciesCount + (speciesCount===1?' species':' species')) : 'None added yet', '') +
       statTile('Equipment logged', String(equipment.length), null,
         totalSpend ? ('$'+totalSpend.toFixed(2)+' total') : 'No purchases yet', '') +
+      statTile('Est. power cost', powerValue, null, powerSub, '') +
     '</section>';
   }
   function daySummary(days){
@@ -819,6 +873,7 @@
     var tableRows = rows.length ? rows.map(function(r){
       var cells = cfg.columns.map(function(c){
         var cls = c.text ? 'text-cell' : '';
+        if(c.key === 'estCost') return '<td class="'+cls+'">'+estCostCell(r)+'</td>';
         return '<td class="'+cls+'">'+escapeHtml(fmtCell(r[c.key], c))+'</td>';
       }).join('');
       return '<tr>'+cells+'<td><button type="button" class="row-delete" data-delete-tab="'+ui.activeTab+'" data-delete-id="'+r.id+'">Delete</button></td></tr>';
@@ -853,10 +908,12 @@
   }
 
   function renderFooter(){
+    var rateVal = STATE.settings.electricityRate!=null ? STATE.settings.electricityRate : '';
     return '<footer class="app-footer">' +
       '<div class="settings-row">' +
         '<div class="settings-field"><label>Water test reminder</label><div class="inline-num"><span>every</span><input type="number" id="testIntervalInput" min="1" value="'+STATE.settings.waterTestIntervalDays+'"><span>days</span></div></div>' +
         '<div class="settings-field"><label>Water change reminder</label><div class="inline-num"><span>every</span><input type="number" id="changeIntervalInput" min="1" value="'+STATE.settings.waterChangeIntervalDays+'"><span>days</span></div></div>' +
+        '<div class="settings-field"><label>Electricity rate</label><div class="inline-num"><span>$</span><input type="number" id="electricityRateInput" min="0" step="0.01" value="'+escapeHtml(rateVal)+'"><span>/kWh</span></div></div>' +
         '<button type="button" class="btn-ghost" id="saveSettingsBtn">Save reminders</button>' +
       '</div>' +
       '<div class="footer-actions"><button type="button" class="btn-ghost" id="backupBtn">Download full backup (JSON)</button></div>' +
@@ -915,7 +972,8 @@
       saveSettingsBtn.addEventListener('click', function(){
         var t = document.getElementById('testIntervalInput').value;
         var c = document.getElementById('changeIntervalInput').value;
-        updateSettings(t, c);
+        var r = document.getElementById('electricityRateInput').value;
+        updateSettings(t, c, r);
       });
     }
 
