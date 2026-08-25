@@ -2,7 +2,9 @@ import { json, errorResponse, uid, num, str, readJson } from '../_utils.js';
 
 export async function onRequestGet({ env }) {
   const { results } = await env.DB.prepare(
-    'SELECT id, date, item, cost, notes FROM equipment ORDER BY date DESC, created_at DESC'
+    `SELECT id, date, item, cost, notes,
+            wattage, hours_per_day AS hoursPerDay
+     FROM equipment ORDER BY date DESC, created_at DESC`
   ).all();
   return json(results);
 }
@@ -15,10 +17,30 @@ export async function onRequestPost({ request, env }) {
 
   const id = uid();
   await env.DB.prepare(
-    `INSERT INTO equipment (id, date, item, cost, notes) VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO equipment (id, date, item, cost, notes, wattage, hours_per_day)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(id, str(body.date), str(body.item), num(body.cost), str(body.notes))
+    .bind(
+      id,
+      str(body.date),
+      str(body.item),
+      num(body.cost),
+      str(body.notes),
+      num(body.wattage),
+      num(body.hoursPerDay)
+    )
     .run();
 
-  return json({ id, date: str(body.date), item: str(body.item), cost: num(body.cost), notes: str(body.notes) }, 201);
+  return json(
+    {
+      id,
+      date: str(body.date),
+      item: str(body.item),
+      cost: num(body.cost),
+      notes: str(body.notes),
+      wattage: num(body.wattage),
+      hoursPerDay: num(body.hoursPerDay),
+    },
+    201
+  );
 }
