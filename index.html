@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Aquarium Log</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: light;
+    --page: #eef3f1;
+    --surface: #fbfdfc;
+    --surface-2: #f2f6f4;
+    --ink: #12211d;
+    --ink-2: #4b5c55;
+    --ink-3: #839089;
+    --line: #dce6e1;
+    --line-strong: #c3d1cb;
+    --accent: #0b5d6b;
+    --accent-ink: #ffffff;
+    --accent-soft: #e2eef0;
+    --copper: #8b5a2b;
+    --copper-soft: #f1e6da;
+    --amm: #d1591f;
+    --nitrite: #2a78d6;
+    --nitrate: #1a9c66;
+    --good: #0ca30c;
+    --warning: #b8790a;
+    --critical: #d03b3b;
+    --shadow: 0 1px 2px rgba(18,33,29,0.06), 0 6px 20px -8px rgba(18,33,29,0.12);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --page: #0a1513;
+      --surface: #10201c;
+      --surface-2: #142822;
+      --ink: #eaf2ef;
+      --ink-2: #b8c7c1;
+      --ink-3: #85958e;
+      --line: #24413a;
+      --line-strong: #305349;
+      --accent: #48c7d6;
+      --accent-ink: #06181a;
+      --accent-soft: #133238;
+      --copper: #d9a05f;
+      --copper-soft: #2c2015;
+      --amm: #e8794a;
+      --nitrite: #5b9ee8;
+      --nitrate: #3fbf8a;
+      --good: #35c235;
+      --warning: #e0a930;
+      --critical: #e8635f;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 24px -8px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --page: #0a1513;
+    --surface: #10201c;
+    --surface-2: #142822;
+    --ink: #eaf2ef;
+    --ink-2: #b8c7c1;
+    --ink-3: #85958e;
+    --line: #24413a;
+    --line-strong: #305349;
+    --accent: #48c7d6;
+    --accent-ink: #06181a;
+    --accent-soft: #133238;
+    --copper: #d9a05f;
+    --copper-soft: #2c2015;
+    --amm: #e8794a;
+    --nitrite: #5b9ee8;
+    --nitrate: #3fbf8a;
+    --good: #35c235;
+    --warning: #e0a930;
+    --critical: #e8635f;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 24px -8px rgba(0,0,0,0.5);
+  }
+
+  *{ box-sizing: border-box; }
+  html{ -webkit-text-size-adjust: 100%; }
+  body{
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .stat-tile, .chart-card, .tab-btn, .btn-primary, .btn-ghost, .row-delete{ transition: transform .15s ease, box-shadow .15s ease, background-color .15s ease, color .15s ease, border-color .15s ease; }
+  }
+  .wrap{ max-width: 980px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  /* ---------- header ---------- */
+  .hero{ padding: 8px 0 0; }
+  .hero-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap: wrap; }
+  .eyebrow{ display:block; font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 6px; }
+  .wordmark{
+    font-family: 'Fraunces', ui-serif, Georgia, serif;
+    font-optical-sizing: auto;
+    font-weight: 560;
+    font-size: clamp(2rem, 5vw, 2.75rem);
+    line-height: 1.05;
+    margin: 0;
+    color: var(--ink);
+    text-wrap: balance;
+    cursor: text;
+    border-radius: 8px;
+    padding: 2px 6px;
+    margin-left: -6px;
+    outline-offset: 4px;
+  }
+  .wordmark:hover{ background: var(--surface-2); }
+  .wordmark:focus-visible{ outline: 2px solid var(--accent); background: var(--surface-2); }
+  .wordmark-input{
+    font-family: 'Fraunces', ui-serif, Georgia, serif;
+    font-weight: 560;
+    font-size: clamp(2rem, 5vw, 2.75rem);
+    line-height: 1.05;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    padding: 2px 6px;
+    margin-left: -6px;
+    width: min(100%, 520px);
+  }
+  .save-indicator{
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--ink-3);
+    text-align: right;
+    padding-top: 10px;
+    min-width: 140px;
+  }
+  .save-indicator .dot{ display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--good); margin-right:6px; position:relative; top:-1px; }
+  .save-indicator.neutral .dot{ background: var(--ink-3); }
+  .save-indicator.saving .dot{ background: var(--warning); }
+  .save-indicator.unsaved .dot{ background: var(--critical); }
+  .waterline{ width:100%; height:14px; margin: 20px 0 28px; display:block; overflow: visible; }
+  .waterline path{ fill:none; stroke: var(--accent); stroke-width: 2; opacity: 0.55; }
+
+  /* ---------- stat grid ---------- */
+  .stat-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .stat-tile{
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+    display:flex; flex-direction:column; gap:8px;
+    min-height: 132px;
+  }
+  .stat-label{ margin:0; font-size:0.8rem; color: var(--ink-2); font-weight:500; }
+  .stat-value{ margin:0; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:1.6rem; font-weight:600; letter-spacing:-0.01em; }
+  .stat-sub{ margin: -4px 0 0; font-size:0.78rem; color: var(--ink-3); }
+  .pill{ display:inline-flex; align-items:center; gap:6px; align-self:flex-start; font-size:0.72rem; font-weight:600; letter-spacing:0.02em; padding: 3px 9px 3px 7px; border-radius: 999px; }
+  .pill .dot{ width:7px; height:7px; border-radius:50%; }
+  .pill-good{ color: var(--good); background: color-mix(in oklab, var(--good) 14%, transparent); }
+  .pill-good .dot{ background: var(--good); }
+  .pill-warning{ color: var(--warning); background: color-mix(in oklab, var(--warning) 16%, transparent); }
+  .pill-warning .dot{ background: var(--warning); }
+  .pill-critical{ color: var(--critical); background: color-mix(in oklab, var(--critical) 14%, transparent); }
+  .pill-critical .dot{ background: var(--critical); }
+  .pill-neutral{ color: var(--ink-3); background: var(--surface-2); }
+  .pill-neutral .dot{ background: var(--ink-3); }
+  .spark{ margin-top: auto; height: 28px; width: 100%; display:block; }
+  .spark .spark-line{ fill:none; stroke: var(--line-strong); stroke-width: 1.5; }
+  .spark .spark-end{ fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+
+  /* ---------- section headings ---------- */
+  .section-heading{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin: 0 0 12px; }
+  .section-heading h2{ font-size:0.78rem; text-transform:uppercase; letter-spacing:0.12em; color: var(--ink-2); font-weight:600; margin:0; }
+  .section-heading .hint{ font-size:0.78rem; color: var(--ink-3); }
+
+  /* ---------- chart grid ---------- */
+  .chart-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 32px; }
+  .chart-card{ background: var(--surface); border:1px solid var(--line); border-radius: var(--radius); padding: 16px 18px 14px; box-shadow: var(--shadow); }
+  .chart-card h3{ margin:0 0 2px; font-size:0.85rem; font-weight:600; }
+  .chart-card .chart-caption{ margin: 6px 0 0; font-size:0.75rem; color: var(--ink-3); font-family:'IBM Plex Mono', ui-monospace, monospace; }
+  .chart-empty{ height:110px; display:flex; align-items:center; justify-content:center; color: var(--ink-3); font-size:0.8rem; text-align:center; padding: 0 10px; }
+  .chart-legend{ display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; }
+  .chart-legend span{ display:inline-flex; align-items:center; gap:6px; font-size:0.72rem; color: var(--ink-2); }
+  .chart-legend i{ width:9px; height:9px; border-radius:2px; display:inline-block; }
+  .grid-line{ stroke: var(--line); stroke-width:1; }
+  .axis-label{ fill: var(--ink-3); font-size: 9px; font-family:'IBM Plex Mono', ui-monospace, monospace; }
+  .series-line{ fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .series-dot{ stroke: var(--surface); stroke-width:2; }
+  .end-label{ font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; font-weight:600; }
+
+  /* ---------- tabs ---------- */
+  .log-section{ margin-bottom: 28px; }
+  .tab-bar{ display:flex; gap:4px; border-bottom: 1px solid var(--line); margin-bottom:16px; overflow-x:auto; }
+  .tab-btn{ appearance:none; border:none; background:none; font:inherit; font-size:0.85rem; font-weight:600; color: var(--ink-3); padding: 10px 4px; margin-right: 18px; cursor:pointer; position:relative; white-space:nowrap; }
+  .tab-btn::after{ content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background: transparent; border-radius:2px; }
+  .tab-btn.active{ color: var(--ink); }
+  .tab-btn.active::after{ background: var(--accent); }
+  .tab-btn:hover{ color: var(--ink); }
+  .tab-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+
+  .panel-toolbar{ display:flex; gap:10px; margin-bottom: 14px; flex-wrap:wrap; }
+  .btn-primary, .btn-ghost{ font: inherit; font-size:0.82rem; font-weight:600; border-radius:9px; padding: 8px 14px; cursor:pointer; }
+  .btn-primary{ background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
+  .btn-primary:hover{ transform: translateY(-1px); box-shadow: var(--shadow); }
+  .btn-primary:disabled{ opacity: 0.6; cursor: default; transform: none; }
+  .btn-ghost{ background: transparent; color: var(--ink-2); border: 1px solid var(--line-strong); }
+  .btn-ghost:hover{ color: var(--ink); border-color: var(--ink-3); }
+  .btn-primary:focus-visible, .btn-ghost:focus-visible, button:focus-visible, input:focus-visible, a:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .entry-form{ background: var(--surface-2); border:1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom:16px; }
+  .entry-form .field-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:12px; }
+  .field label{ display:block; font-size:0.72rem; font-weight:600; color: var(--ink-2); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.04em; }
+  .field input, .field select{
+    width:100%; font: inherit; font-size:0.9rem; padding: 8px 10px; border-radius:8px;
+    border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+  .field.wide{ grid-column: 1 / -1; }
+  .field.wide input{ font-family: 'IBM Plex Sans', sans-serif; }
+  .form-actions{ display:flex; gap:10px; }
+
+  .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+  table{ width:100%; border-collapse:collapse; font-size:0.85rem; min-width: 480px; }
+  thead th{ text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color: var(--ink-3); font-weight:600; padding: 10px 14px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  tbody td{ padding: 10px 14px; border-bottom:1px solid var(--line); font-family:'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; vertical-align: top; }
+  tbody td.text-cell{ font-family:'IBM Plex Sans', sans-serif; font-variant-numeric: normal; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background: var(--surface-2); }
+  .row-delete{ font: inherit; font-size:0.76rem; font-weight:600; color: var(--ink-3); background:none; border:none; cursor:pointer; padding:4px 6px; border-radius:6px; }
+  .row-delete:hover{ color: var(--critical); background: color-mix(in oklab, var(--critical) 10%, transparent); }
+  .empty-row td{ color: var(--ink-3); font-family:'IBM Plex Sans', sans-serif; text-align:center; padding: 22px; }
+
+  /* ---------- footer ---------- */
+  .app-footer{ margin-top: 36px; padding-top: 20px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:14px; }
+  .settings-row{ display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end; }
+  .settings-field{ display:flex; flex-direction:column; gap:4px; }
+  .settings-field label{ font-size:0.72rem; color: var(--ink-2); font-weight:600; }
+  .settings-field .inline-num{ display:flex; align-items:center; gap:6px; font-size:0.85rem; }
+  .settings-field input{ width:64px; font: inherit; font-family:'IBM Plex Mono', ui-monospace, monospace; padding:6px 8px; border-radius:7px; border:1px solid var(--line-strong); background: var(--surface); color: var(--ink); }
+  .footer-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+  .muted{ color: var(--ink-3); font-size:0.78rem; margin:0; }
+
+  .toast-stack{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; gap:8px; z-index:50; }
+  .toast{ background: var(--ink); color: var(--page); font-size:0.82rem; padding:10px 16px; border-radius:9px; box-shadow: var(--shadow); }
+
+  .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+  .load-state{ display:flex; flex-direction:column; align-items:flex-start; gap:14px; padding: 60px 0; }
+  .load-state p{ color: var(--ink-2); margin:0; }
+
+  @media (max-width: 520px){
+    .hero-top{ flex-direction:column; }
+    .save-indicator{ text-align:left; padding-top:0; }
+  }
+</style>
+</head>
+<body>
+<div id="app">Loading…</div>
+<script>
+(function(){
+
+  var ui = { activeTab: 'tests', showAddForm: false, editingName: false, toasts: [] };
+  var STATE = {
+    tankName: 'My Aquarium',
+    settings: { waterTestIntervalDays: 7, waterChangeIntervalDays: 14 },
+    waterTests: [], waterChanges: [], fish: [], equipment: [],
+    loaded: false
+  };
+  var saveState = 'loading'; // loading | saving | error | idle
+  var lastSyncedAt = null;
+
+  var FIELD_CONFIG = {
+    tests: {
+      noun: 'water test', plural: 'Water tests',
+      fields: [
+        { key:'date', label:'Date', type:'date', required:true },
+        { key:'ph', label:'pH', type:'number', step:'any', min:'0', max:'14' },
+        { key:'ammonia', label:'Ammonia (ppm)', type:'number', step:'any', min:'0' },
+        { key:'nitrite', label:'Nitrite (ppm)', type:'number', step:'any', min:'0' },
+        { key:'nitrate', label:'Nitrate (ppm)', type:'number', step:'any', min:'0' },
+        { key:'temp', label:'Temp (°C)', type:'number', step:'any' },
+        { key:'notes', label:'Notes', type:'text', wide:true }
+      ],
+      columns: [
+        { key:'date', label:'Date', fmt:'date' },
+        { key:'ph', label:'pH' },
+        { key:'ammonia', label:'NH3 (ppm)' },
+        { key:'nitrite', label:'NO2 (ppm)' },
+        { key:'nitrate', label:'NO3 (ppm)' },
+        { key:'temp', label:'°C' },
+        { key:'notes', label:'Notes', text:true }
+      ]
+    },
+    changes: {
+      noun: 'water change', plural: 'Water changes',
+      fields: [
+        { key:'date', label:'Date', type:'date', required:true },
+        { key:'percent', label:'% changed', type:'number', step:'any', min:'0', max:'100' },
+        { key:'notes', label:'Notes', type:'text', wide:true }
+      ],
+      columns: [
+        { key:'date', label:'Date', fmt:'date' },
+        { key:'percent', label:'% changed', fmt:'pct' },
+        { key:'notes', label:'Notes', text:true }
+      ]
+    },
+    fish: {
+      noun: 'fish', plural: 'Fish',
+      fields: [
+        { key:'dateAdded', label:'Date added', type:'date', required:true },
+        { key:'species', label:'Species', type:'text', required:true },
+        { key:'name', label:'Nickname', type:'text' },
+        { key:'quantity', label:'Quantity', type:'number', step:'1', min:'1' },
+        { key:'notes', label:'Notes', type:'text', wide:true }
+      ],
+      columns: [
+        { key:'dateAdded', label:'Added', fmt:'date' },
+        { key:'species', label:'Species', text:true },
+        { key:'name', label:'Nickname', text:true },
+        { key:'quantity', label:'Qty' },
+        { key:'notes', label:'Notes', text:true }
+      ]
+    },
+    equipment: {
+      noun: 'equipment purchase', plural: 'Equipment',
+      fields: [
+        { key:'date', label:'Date', type:'date', required:true },
+        { key:'item', label:'Item', type:'text', required:true },
+        { key:'cost', label:'Cost ($)', type:'number', step:'any', min:'0' },
+        { key:'notes', label:'Notes', type:'text', wide:true }
+      ],
+      columns: [
+        { key:'date', label:'Date', fmt:'date' },
+        { key:'item', label:'Item', text:true },
+        { key:'cost', label:'Cost', fmt:'money' },
+        { key:'notes', label:'Notes', text:true }
+      ]
+    }
+  };
+  var TAB_ORDER = ['tests','changes','fish','equipment'];
+  var TAB_STATE_KEY = { tests:'waterTests', changes:'waterChanges', fish:'fish', equipment:'equipment' };
+  var TAB_ENDPOINT = { tests:'/water-tests', changes:'/water-changes', fish:'/fish', equipment:'/equipment' };
+
+  /* ---------------- utilities ---------------- */
+  function pad(n){ return n<10 ? '0'+n : ''+n; }
+  function todayISO(){ var d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+  function escapeHtml(str){
+    return String(str==null?'':str).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+  function fmtDate(iso){
+    if(!iso) return '—';
+    var parts = iso.split('-');
+    if(parts.length!==3) return iso;
+    var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var m = parseInt(parts[1],10)-1;
+    return parseInt(parts[2],10)+' '+(months[m]||parts[1])+' '+parts[0];
+  }
+  function daysSince(iso){
+    if(!iso) return null;
+    var d = new Date(iso+'T00:00:00');
+    if(isNaN(d.getTime())) return null;
+    var now = new Date();
+    var startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var diff = Math.round((startToday - d) / 86400000);
+    return diff;
+  }
+  function statusForDays(days, interval){
+    if(days==null) return null;
+    if(days < 0) return 'good';
+    if(days <= interval) return 'good';
+    if(days <= interval*1.5) return 'warning';
+    return 'critical';
+  }
+  function statusLabel(status){
+    return { good:'On track', warning:'Due soon', critical:'Overdue' }[status] || 'Not logged yet';
+  }
+  function sortedByDate(list, key){
+    return list.slice().sort(function(a,b){ return (a[key]||'') < (b[key]||'') ? 1 : -1; });
+  }
+  function num(v){ var n = parseFloat(v); return isNaN(n) ? null : n; }
+  function fmtCell(val, col){
+    if(col.fmt==='date') return fmtDate(val);
+    if(col.fmt==='pct') return (val==null||val==='') ? '—' : val+'%';
+    if(col.fmt==='money') return (val==null||val==='') ? '—' : '$'+parseFloat(val).toFixed(2);
+    if(val==null || val==='') return '—';
+    return String(val);
+  }
+
+  /* ---------------- API ---------------- */
+  function apiUrl(path){ return '/api' + path; }
+  function apiError(res, body){
+    var msg = (body && body.error) ? body.error : ('Request failed (' + res.status + ')');
+    return new Error(msg);
+  }
+  function apiGet(path){
+    return fetch(apiUrl(path)).then(function(res){
+      return res.json().catch(function(){ return null; }).then(function(body){
+        if(!res.ok) throw apiError(res, body);
+        return body;
+      });
+    });
+  }
+  function apiSend(method, path, payload){
+    return fetch(apiUrl(path), {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function(res){
+      return res.json().catch(function(){ return null; }).then(function(body){
+        if(!res.ok) throw apiError(res, body);
+        return body;
+      });
+    });
+  }
+  function apiDelete(path){
+    return fetch(apiUrl(path), { method: 'DELETE' }).then(function(res){
+      if(!res.ok) throw new Error('Request failed (' + res.status + ')');
+      return res.json().catch(function(){ return {}; });
+    });
+  }
+
+  function loadAll(){
+    saveState = 'loading';
+    render();
+    Promise.all([
+      apiGet('/water-tests'),
+      apiGet('/water-changes'),
+      apiGet('/fish'),
+      apiGet('/equipment'),
+      apiGet('/settings')
+    ]).then(function(results){
+      STATE.waterTests = results[0] || [];
+      STATE.waterChanges = results[1] || [];
+      STATE.fish = results[2] || [];
+      STATE.equipment = results[3] || [];
+      var settings = results[4] || {};
+      STATE.tankName = settings.tank_name || 'My Aquarium';
+      STATE.settings.waterTestIntervalDays = parseInt(settings.water_test_interval_days, 10) || 7;
+      STATE.settings.waterChangeIntervalDays = parseInt(settings.water_change_interval_days, 10) || 14;
+      STATE.loaded = true;
+      saveState = 'idle';
+      lastSyncedAt = new Date();
+      render();
+    }).catch(function(err){
+      saveState = 'error';
+      render();
+      pushToast('Could not load your tank data: ' + err.message);
+    });
+  }
+
+  /* ---------------- state mutation ---------------- */
+  function buildPayload(tabKey, data){
+    if(tabKey === 'tests') return { date:data.date, ph:data.ph, ammonia:data.ammonia, nitrite:data.nitrite, nitrate:data.nitrate, temp:data.temp, notes:data.notes };
+    if(tabKey === 'changes') return { date:data.date, percent:data.percent, notes:data.notes };
+    if(tabKey === 'fish') return { dateAdded:data.dateAdded, species:data.species, name:data.name, quantity:data.quantity, notes:data.notes };
+    return { date:data.date, item:data.item, cost:data.cost, notes:data.notes };
+  }
+
+  function addEntry(tabKey, data){
+    ui.showAddForm = false;
+    saveState = 'saving';
+    render();
+    apiSend('POST', TAB_ENDPOINT[tabKey], buildPayload(tabKey, data)).then(function(created){
+      STATE[TAB_STATE_KEY[tabKey]].push(created);
+      saveState = 'idle';
+      lastSyncedAt = new Date();
+      render();
+    }).catch(function(err){
+      saveState = 'error';
+      render();
+      pushToast('Could not save: ' + err.message);
+    });
+  }
+
+  function deleteEntry(tabKey, id){
+    if(!confirm('Delete this entry? This cannot be undone.')) return;
+    saveState = 'saving';
+    render();
+    apiDelete(TAB_ENDPOINT[tabKey] + '/' + encodeURIComponent(id)).then(function(){
+      STATE[TAB_STATE_KEY[tabKey]] = STATE[TAB_STATE_KEY[tabKey]].filter(function(r){ return r.id !== id; });
+      saveState = 'idle';
+      lastSyncedAt = new Date();
+      render();
+    }).catch(function(err){
+      saveState = 'error';
+      render();
+      pushToast('Could not delete: ' + err.message);
+    });
+  }
+
+  function renameTank(name){
+    if(!ui.editingName) return; // guards against the reentrant blur fired while the input is being removed from the DOM
+    name = (name||'').trim();
+    ui.editingName = false;
+    if(!name || name === STATE.tankName){ render(); return; }
+    var previous = STATE.tankName;
+    STATE.tankName = name;
+    saveState = 'saving';
+    render();
+    apiSend('PUT', '/settings', { tank_name: name }).then(function(){
+      saveState = 'idle';
+      lastSyncedAt = new Date();
+      render();
+    }).catch(function(err){
+      STATE.tankName = previous;
+      saveState = 'error';
+      render();
+      pushToast('Could not rename tank: ' + err.message);
+    });
+  }
+
+  function updateSettings(testInterval, changeInterval){
+    var t = parseInt(testInterval,10), c = parseInt(changeInterval,10);
+    var payload = {};
+    if(t>0) payload.water_test_interval_days = t;
+    if(c>0) payload.water_change_interval_days = c;
+    if(!Object.keys(payload).length) return;
+    saveState = 'saving';
+    render();
+    apiSend('PUT', '/settings', payload).then(function(){
+      if(t>0) STATE.settings.waterTestIntervalDays = t;
+      if(c>0) STATE.settings.waterChangeIntervalDays = c;
+      saveState = 'idle';
+      lastSyncedAt = new Date();
+      render();
+      pushToast('Reminder settings saved.');
+    }).catch(function(err){
+      saveState = 'error';
+      render();
+      pushToast('Could not save settings: ' + err.message);
+    });
+  }
+
+  function pushToast(msg){
+    var t = { id: uid(), msg: msg };
+    ui.toasts.push(t);
+    render();
+    setTimeout(function(){
+      ui.toasts = ui.toasts.filter(function(x){ return x.id!==t.id; });
+      render();
+    }, 4500);
+  }
+
+  /* ---------------- sparkline / chart helpers ---------------- */
+  function sparklinePath(values, w, h, pad){
+    pad = pad==null?2:pad;
+    var vals = values.filter(function(v){ return v!=null; });
+    if(vals.length<2) return null;
+    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+    if(min===max){ min -= 1; max += 1; }
+    var n = values.length;
+    var pts = values.map(function(v,i){
+      var x = pad + (i/(n-1)) * (w-2*pad);
+      var y = v==null ? null : (h-pad) - ((v-min)/(max-min)) * (h-2*pad);
+      return [x,y];
+    });
+    return pts;
+  }
+  function pathFromPoints(pts){
+    var d = '';
+    var started = false;
+    pts.forEach(function(p){
+      if(p[1]==null){ started=false; return; }
+      d += (started ? ' L ' : 'M ') + p[0].toFixed(1) + ' ' + p[1].toFixed(1);
+      started = true;
+    });
+    return d;
+  }
+  function renderSparkline(values){
+    var w=120,h=28;
+    var pts = sparklinePath(values, w, h, 3);
+    if(!pts) return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true"></svg>';
+    var d = pathFromPoints(pts);
+    var last = pts[pts.length-1];
+    var lastX = last[1]==null ? null : last[0], lastY = last[1];
+    var dot = lastY==null ? '' : '<circle class="spark-end" cx="'+lastX.toFixed(1)+'" cy="'+lastY.toFixed(1)+'" r="3"></circle>';
+    return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true"><path class="spark-line" d="'+d+'"></path>'+dot+'</svg>';
+  }
+
+  function renderLineChart(series, opts){
+    var w = 280, h = 130, padL = 8, padR = 8, padT = 10, padB = 10;
+    var allDates = [];
+    series.forEach(function(s){ s.points.forEach(function(p){ if(allDates.indexOf(p.x)===-1) allDates.push(p.x); }); });
+    allDates.sort();
+    var n = allDates.length;
+    if(n < 2){
+      return '<div class="chart-empty">'+(opts.emptyText||'Log at least two entries to see a trend.')+'</div>';
+    }
+    var allVals = [];
+    series.forEach(function(s){ s.points.forEach(function(p){ if(p.y!=null) allVals.push(p.y); }); });
+    if(allVals.length===0){
+      return '<div class="chart-empty">'+(opts.emptyText||'No readings logged for this yet.')+'</div>';
+    }
+    var min = Math.min.apply(null, allVals), max = Math.max.apply(null, allVals);
+    if(min===max){ min -= 1; max += 1; }
+    if(opts.zeroFloor){ min = Math.min(min, 0); }
+    var xFor = function(i){ return padL + (i/(n-1)) * (w-padL-padR); };
+    var yFor = function(v){ return (h-padB) - ((v-min)/(max-min)) * (h-padT-padB); };
+
+    var gridLines = '';
+    var steps = 3;
+    for(var g=0; g<=steps; g++){
+      var gy = padT + (g/steps)*(h-padT-padB);
+      gridLines += '<line class="grid-line" x1="'+padL+'" y1="'+gy.toFixed(1)+'" x2="'+(w-padR)+'" y2="'+gy.toFixed(1)+'"></line>';
+    }
+
+    var paths = '';
+    series.forEach(function(s){
+      var byDate = {};
+      s.points.forEach(function(p){ byDate[p.x] = p.y; });
+      var pts = allDates.map(function(d,i){
+        var v = byDate.hasOwnProperty(d) ? byDate[d] : null;
+        return [xFor(i), v==null?null:yFor(v)];
+      });
+      var d = pathFromPoints(pts);
+      if(d) paths += '<path class="series-line" d="'+d+'" stroke="'+s.color+'"></path>';
+      var validPts = pts.filter(function(p){ return p[1]!=null; });
+      if(validPts.length){
+        var lastP = validPts[validPts.length-1];
+        paths += '<circle class="series-dot" cx="'+lastP[0].toFixed(1)+'" cy="'+lastP[1].toFixed(1)+'" r="4" fill="'+s.color+'"></circle>';
+      }
+    });
+
+    var xLabel = '<text class="axis-label" x="'+padL+'" y="'+(h-1)+'">'+escapeHtml(fmtDateShort(allDates[0]))+'</text>'+
+      '<text class="axis-label" x="'+(w-padR)+'" y="'+(h-1)+'" text-anchor="end">'+escapeHtml(fmtDateShort(allDates[n-1]))+'</text>';
+
+    return '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="120" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+escapeHtml(opts.ariaLabel||'trend chart')+'">'+gridLines+paths+xLabel+'</svg>';
+  }
+  function fmtDateShort(iso){
+    var parts = (iso||'').split('-');
+    if(parts.length!==3) return iso||'';
+    var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return parseInt(parts[2],10)+' '+months[parseInt(parts[1],10)-1];
+  }
+
+  /* ---------------- CSV / backup export ---------------- */
+  function csvEscape(v){
+    v = v==null ? '' : String(v);
+    if(/[",\r\n]/.test(v)) v = '"'+v.replace(/"/g,'""')+'"';
+    return v;
+  }
+  function tabToCsv(tabKey){
+    var cfg = FIELD_CONFIG[tabKey];
+    var rows = sortedByDate(STATE[TAB_STATE_KEY[tabKey]], cfg.fields[0].key);
+    var header = cfg.columns.map(function(c){ return csvEscape(c.label); }).join(',');
+    var lines = rows.map(function(r){
+      return cfg.columns.map(function(c){ return csvEscape(r[c.key]); }).join(',');
+    });
+    return [header].concat(lines).join('\r\n');
+  }
+  function downloadFile(filename, content, mime){
+    var blob = new Blob([content], { type: mime || 'text/plain' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+  function exportCsv(tabKey){
+    var csv = tabToCsv(tabKey);
+    var filename = (STATE.tankName||'tank').toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-' + tabKey + '.csv';
+    downloadFile(filename, csv, 'text/csv');
+  }
+  function exportBackup(){
+    var json = JSON.stringify(STATE, null, 2);
+    var filename = (STATE.tankName||'tank').toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-backup.json';
+    downloadFile(filename, json, 'application/json');
+  }
+
+  /* ---------------- rendering ---------------- */
+  function render(){
+    var app = document.getElementById('app');
+    app.innerHTML = renderApp();
+    attachHandlers();
+  }
+
+  function renderApp(){
+    if(!STATE.loaded){
+      if(saveState === 'error'){
+        return '<div class="wrap"><div class="load-state"><span class="eyebrow">Tank log</span>' +
+          '<p>Could not reach the server. The database or API might be unreachable right now.</p>' +
+          '<button type="button" class="btn-primary" id="retryLoadBtn">Try again</button></div></div>';
+      }
+      return '<div class="wrap"><div class="load-state"><span class="eyebrow">Tank log</span><p>Loading your tank…</p></div></div>' + renderToasts();
+    }
+    return '' +
+      '<div class="wrap">' +
+        renderHeader() +
+        renderStatGrid() +
+        renderChemistryCharts() +
+        renderLogSection() +
+        renderFooter() +
+      '</div>' +
+      renderToasts();
+  }
+
+  function renderHeader(){
+    var indicatorClass = 'save-indicator';
+    var indicatorText;
+    if(saveState==='saving'){ indicatorClass += ' saving'; indicatorText = 'Saving…'; }
+    else if(saveState==='error'){ indicatorClass += ' unsaved'; indicatorText = 'Could not reach the server'; }
+    else if(lastSyncedAt){ indicatorText = 'Synced ' + lastSyncedAt.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
+    else { indicatorClass += ' neutral'; indicatorText = 'Synced'; }
+
+    var nameBlock = ui.editingName
+      ? '<input class="wordmark-input" id="tankNameInput" type="text" value="'+escapeHtml(STATE.tankName)+'" maxlength="60">'
+      : '<h1 class="wordmark" id="tankNameDisplay" tabindex="0" role="button" aria-label="Click to rename your tank">'+escapeHtml(STATE.tankName)+'</h1>';
+
+    return '' +
+      '<header class="hero">' +
+        '<div class="hero-top">' +
+          '<div class="wordmark-group">' +
+            '<span class="eyebrow">Tank log</span>' +
+            nameBlock +
+          '</div>' +
+          '<div class="'+indicatorClass+'"><span class="dot"></span>'+escapeHtml(indicatorText)+'</div>' +
+        '</div>' +
+        '<svg class="waterline" viewBox="0 0 600 14" preserveAspectRatio="none" aria-hidden="true"><path d="M0 7 C 50 0, 100 14, 150 7 C 200 0, 250 14, 300 7 C 350 0, 400 14, 450 7 C 500 0, 550 14, 600 7"></path></svg>' +
+      '</header>';
+  }
+
+  function renderStatGrid(){
+    var tests = sortedByDate(STATE.waterTests, 'date');
+    var changes = sortedByDate(STATE.waterChanges, 'date');
+    var fishList = STATE.fish;
+    var equipment = sortedByDate(STATE.equipment, 'date');
+
+    var lastTest = tests[0];
+    var testDays = lastTest ? daysSince(lastTest.date) : null;
+    var testStatus = statusForDays(testDays, STATE.settings.waterTestIntervalDays);
+
+    var lastChange = changes[0];
+    var changeDays = lastChange ? daysSince(lastChange.date) : null;
+    var changeStatus = statusForDays(changeDays, STATE.settings.waterChangeIntervalDays);
+
+    var fishCount = fishList.reduce(function(sum,f){ return sum + (parseInt(f.quantity,10)||1); }, 0);
+    var speciesCount = (function(){
+      var set = {};
+      fishList.forEach(function(f){ if(f.species) set[f.species.toLowerCase()] = true; });
+      return Object.keys(set).length;
+    })();
+
+    var totalSpend = equipment.reduce(function(sum,e){ return sum + (parseFloat(e.cost)||0); }, 0);
+
+    return '<section class="stat-grid" aria-label="Tank status overview">' +
+      statTile('Last water test', lastTest ? daySummary(testDays) : 'Never', testStatus,
+        lastTest ? '' : 'Log your first reading', renderSparkline(tests.slice(0,10).reverse().map(function(t){ return num(t.ph); }))) +
+      statTile('Last water change', lastChange ? daySummary(changeDays) : 'Never', changeStatus,
+        lastChange ? '' : 'Log your first change', renderSparkline(changes.slice(0,10).reverse().map(function(c){ return num(c.percent); }))) +
+      statTile('Fish in tank', String(fishCount), null,
+        speciesCount ? (speciesCount + (speciesCount===1?' species':' species')) : 'None added yet', '') +
+      statTile('Equipment logged', String(equipment.length), null,
+        totalSpend ? ('$'+totalSpend.toFixed(2)+' total') : 'No purchases yet', '') +
+    '</section>';
+  }
+  function daySummary(days){
+    if(days===0) return 'Today';
+    if(days===1) return '1 day ago';
+    if(days<0) return 'In the future';
+    return days + ' days ago';
+  }
+  function statTile(label, value, status, sub, sparkSvg){
+    var pill = status ? '<span class="pill pill-'+status+'"><span class="dot"></span>'+statusLabel(status)+'</span>' : '';
+    return '<article class="stat-tile">' +
+      '<p class="stat-label">'+escapeHtml(label)+'</p>' +
+      '<p class="stat-value">'+escapeHtml(value)+'</p>' +
+      (pill || (sub ? '<p class="stat-sub">'+escapeHtml(sub)+'</p>' : '')) +
+      (pill && sub ? '<p class="stat-sub">'+escapeHtml(sub)+'</p>' : '') +
+      (sparkSvg || '') +
+    '</article>';
+  }
+
+  function renderChemistryCharts(){
+    var tests = sortedByDate(STATE.waterTests, 'date').slice(0, 20).reverse();
+    var phSeries = [{ label:'pH', color:'var(--accent)', points: tests.map(function(t){ return {x:t.date, y:num(t.ph)}; }) }];
+    var nSeries = [
+      { label:'Ammonia', color:'var(--amm)', points: tests.map(function(t){ return {x:t.date, y:num(t.ammonia)}; }) },
+      { label:'Nitrite', color:'var(--nitrite)', points: tests.map(function(t){ return {x:t.date, y:num(t.nitrite)}; }) },
+      { label:'Nitrate', color:'var(--nitrate)', points: tests.map(function(t){ return {x:t.date, y:num(t.nitrate)}; }) }
+    ];
+    var tempSeries = [{ label:'Temp', color:'var(--copper)', points: tests.map(function(t){ return {x:t.date, y:num(t.temp)}; }) }];
+
+    return '<section aria-label="Water chemistry trends">' +
+      '<div class="section-heading"><h2>Water chemistry</h2><span class="hint">Last '+tests.length+' test'+(tests.length===1?'':'s')+'</span></div>' +
+      '<div class="chart-grid">' +
+        '<div class="chart-card"><h3>pH</h3>' + renderLineChart(phSeries, {ariaLabel:'pH over time', emptyText:'Log at least two water tests to see the pH trend.'}) + '</div>' +
+        '<div class="chart-card"><h3>Nitrogen cycle (ppm)</h3>' + renderLineChart(nSeries, {ariaLabel:'Ammonia, nitrite and nitrate over time', zeroFloor:true, emptyText:'Log ammonia, nitrite or nitrate readings to see this trend.'}) +
+          '<div class="chart-legend"><span><i style="background:var(--amm)"></i>Ammonia</span><span><i style="background:var(--nitrite)"></i>Nitrite</span><span><i style="background:var(--nitrate)"></i>Nitrate</span></div>' +
+        '</div>' +
+        '<div class="chart-card"><h3>Temperature (°C)</h3>' + renderLineChart(tempSeries, {ariaLabel:'Temperature over time', emptyText:'Log a temperature reading to see this trend.'}) + '</div>' +
+      '</div>' +
+    '</section>';
+  }
+
+  function renderLogSection(){
+    var tabs = TAB_ORDER.map(function(key){
+      var cfg = FIELD_CONFIG[key];
+      var cls = 'tab-btn' + (ui.activeTab===key ? ' active' : '');
+      return '<button type="button" role="tab" aria-selected="'+(ui.activeTab===key)+'" class="'+cls+'" data-tab="'+key+'">'+cfg.plural+' <span style="opacity:.6">('+STATE[TAB_STATE_KEY[key]].length+')</span></button>';
+    }).join('');
+
+    var cfg = FIELD_CONFIG[ui.activeTab];
+    var rows = sortedByDate(STATE[TAB_STATE_KEY[ui.activeTab]], cfg.fields[0].key);
+
+    var formHtml = ui.showAddForm ? renderEntryForm(ui.activeTab) : '';
+
+    var tableRows = rows.length ? rows.map(function(r){
+      var cells = cfg.columns.map(function(c){
+        var cls = c.text ? 'text-cell' : '';
+        return '<td class="'+cls+'">'+escapeHtml(fmtCell(r[c.key], c))+'</td>';
+      }).join('');
+      return '<tr>'+cells+'<td><button type="button" class="row-delete" data-delete-tab="'+ui.activeTab+'" data-delete-id="'+r.id+'">Delete</button></td></tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="'+(cfg.columns.length+1)+'">No '+cfg.plural.toLowerCase()+' logged yet.</td></tr>';
+
+    var headerCells = cfg.columns.map(function(c){ return '<th>'+escapeHtml(c.label)+'</th>'; }).join('') + '<th><span class="visually-hidden">Actions</span></th>';
+
+    return '<section class="log-section" aria-label="Tank logs">' +
+      '<div class="tab-bar" role="tablist">'+tabs+'</div>' +
+      '<div class="panel-toolbar">' +
+        '<button type="button" class="btn-primary" id="toggleAddForm">'+(ui.showAddForm ? 'Cancel' : '+ Add '+cfg.noun)+'</button>' +
+        '<button type="button" class="btn-ghost" id="exportCsvBtn">Export CSV</button>' +
+      '</div>' +
+      formHtml +
+      '<div class="table-wrap"><table><thead><tr>'+headerCells+'</tr></thead><tbody>'+tableRows+'</tbody></table></div>' +
+    '</section>';
+  }
+
+  function renderEntryForm(tabKey){
+    var cfg = FIELD_CONFIG[tabKey];
+    var fieldsHtml = cfg.fields.map(function(f){
+      var val = f.type==='date' && f.key==='date' ? todayISO() : (f.type==='date' && f.key==='dateAdded' ? todayISO() : '');
+      var attrs = 'name="'+f.key+'" type="'+f.type+'"' +
+        (f.step?' step="'+f.step+'"':'') + (f.min?' min="'+f.min+'"':'') + (f.max?' max="'+f.max+'"':'') +
+        (f.required?' required':'') + (val?' value="'+val+'"':'');
+      return '<div class="field'+(f.wide?' wide':'')+'"><label for="f_'+f.key+'">'+escapeHtml(f.label)+'</label><input id="f_'+f.key+'" '+attrs+'></div>';
+    }).join('');
+    return '<form class="entry-form" id="addForm" data-tab="'+tabKey+'">' +
+      '<div class="field-grid">'+fieldsHtml+'</div>' +
+      '<div class="form-actions"><button type="submit" class="btn-primary">Save '+cfg.noun+'</button></div>' +
+    '</form>';
+  }
+
+  function renderFooter(){
+    return '<footer class="app-footer">' +
+      '<div class="settings-row">' +
+        '<div class="settings-field"><label>Water test reminder</label><div class="inline-num"><span>every</span><input type="number" id="testIntervalInput" min="1" value="'+STATE.settings.waterTestIntervalDays+'"><span>days</span></div></div>' +
+        '<div class="settings-field"><label>Water change reminder</label><div class="inline-num"><span>every</span><input type="number" id="changeIntervalInput" min="1" value="'+STATE.settings.waterChangeIntervalDays+'"><span>days</span></div></div>' +
+        '<button type="button" class="btn-ghost" id="saveSettingsBtn">Save reminders</button>' +
+      '</div>' +
+      '<div class="footer-actions"><button type="button" class="btn-ghost" id="backupBtn">Download full backup (JSON)</button></div>' +
+      '<p class="muted">Every change here saves straight to the database behind this page — reload any time, nothing is lost.</p>' +
+    '</footer>';
+  }
+
+  function renderToasts(){
+    if(!ui.toasts.length) return '';
+    return '<div class="toast-stack">' + ui.toasts.map(function(t){ return '<div class="toast">'+escapeHtml(t.msg)+'</div>'; }).join('') + '</div>';
+  }
+
+  /* ---------------- event wiring ---------------- */
+  function attachHandlers(){
+    var app = document.getElementById('app');
+
+    var retryBtn = document.getElementById('retryLoadBtn');
+    if(retryBtn){ retryBtn.addEventListener('click', loadAll); }
+
+    var nameDisplay = document.getElementById('tankNameDisplay');
+    if(nameDisplay){
+      nameDisplay.addEventListener('click', function(){ ui.editingName = true; render(); var el=document.getElementById('tankNameInput'); if(el){ el.focus(); el.select(); } });
+      nameDisplay.addEventListener('keydown', function(e){ if(e.key==='Enter'){ ui.editingName=true; render(); var el=document.getElementById('tankNameInput'); if(el){ el.focus(); el.select(); } } });
+    }
+    var nameInput = document.getElementById('tankNameInput');
+    if(nameInput){
+      nameInput.focus();
+      nameInput.addEventListener('keydown', function(e){
+        if(e.key==='Enter'){ renameTank(nameInput.value); }
+        if(e.key==='Escape'){ ui.editingName=false; render(); }
+      });
+      nameInput.addEventListener('blur', function(){ renameTank(nameInput.value); });
+    }
+
+    app.querySelectorAll('.tab-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        ui.activeTab = btn.getAttribute('data-tab');
+        ui.showAddForm = false;
+        render();
+      });
+    });
+
+    var toggleBtn = document.getElementById('toggleAddForm');
+    if(toggleBtn){
+      toggleBtn.addEventListener('click', function(){ ui.showAddForm = !ui.showAddForm; render(); });
+    }
+
+    var exportBtn = document.getElementById('exportCsvBtn');
+    if(exportBtn){ exportBtn.addEventListener('click', function(){ exportCsv(ui.activeTab); }); }
+
+    var backupBtn = document.getElementById('backupBtn');
+    if(backupBtn){ backupBtn.addEventListener('click', exportBackup); }
+
+    var saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    if(saveSettingsBtn){
+      saveSettingsBtn.addEventListener('click', function(){
+        var t = document.getElementById('testIntervalInput').value;
+        var c = document.getElementById('changeIntervalInput').value;
+        updateSettings(t, c);
+      });
+    }
+
+    var form = document.getElementById('addForm');
+    if(form){
+      form.addEventListener('submit', function(e){
+        e.preventDefault();
+        var tabKey = form.getAttribute('data-tab');
+        var cfg = FIELD_CONFIG[tabKey];
+        var data = {};
+        var valid = true;
+        cfg.fields.forEach(function(f){
+          var el = document.getElementById('f_'+f.key);
+          var v = el ? el.value : '';
+          if(f.required && !v){ valid = false; el.focus(); }
+          data[f.key] = v;
+        });
+        if(!valid){ pushToast('Please fill in the required fields.'); return; }
+        addEntry(tabKey, data);
+      });
+    }
+
+    app.querySelectorAll('[data-delete-id]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        deleteEntry(btn.getAttribute('data-delete-tab'), btn.getAttribute('data-delete-id'));
+      });
+    });
+  }
+
+  loadAll();
+})();
+</script>
+</body>
+</html>
