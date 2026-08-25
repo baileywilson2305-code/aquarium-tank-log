@@ -1,6 +1,11 @@
 import { json, errorResponse, str, readJson } from '../_utils.js';
 
-const ALLOWED_KEYS = new Set(['tank_name', 'water_test_interval_days', 'water_change_interval_days']);
+const ALLOWED_KEYS = new Set([
+  'tank_name',
+  'water_test_interval_days',
+  'water_change_interval_days',
+  'electricity_rate',
+]);
 
 export async function onRequestGet({ env }) {
   const { results } = await env.DB.prepare('SELECT key, value FROM settings').all();
