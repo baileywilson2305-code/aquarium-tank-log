@@ -269,7 +269,7 @@
   var STATE = {
     tankName: 'My Aquarium',
     settings: { waterTestIntervalDays: 7, waterChangeIntervalDays: 14, electricityRate: null },
-    waterTests: [], waterChanges: [], fish: [], equipment: [],
+    waterTests: [], waterChanges: [], fish: [], equipment: [], expenses: [],
     loaded: false
   };
   var saveState = 'loading'; // loading | saving | error | idle
@@ -346,11 +346,28 @@
         { key:'estCost', label:'Est. power cost' },
         { key:'notes', label:'Notes', text:true }
       ]
+    },
+    expenses: {
+      noun: 'expense', plural: 'Expenses',
+      fields: [
+        { key:'date', label:'Date', type:'date', required:true },
+        { key:'category', label:'Category', type:'select', options:['Food','Chemicals','Parts','Other'], required:true },
+        { key:'item', label:'Item', type:'text', required:true },
+        { key:'cost', label:'Cost ($)', type:'number', step:'any', min:'0' },
+        { key:'notes', label:'Notes', type:'text', wide:true }
+      ],
+      columns: [
+        { key:'date', label:'Date', fmt:'date' },
+        { key:'category', label:'Category', text:true },
+        { key:'item', label:'Item', text:true },
+        { key:'cost', label:'Cost', fmt:'money' },
+        { key:'notes', label:'Notes', text:true }
+      ]
     }
   };
-  var TAB_ORDER = ['tests','changes','fish','equipment'];
-  var TAB_STATE_KEY = { tests:'waterTests', changes:'waterChanges', fish:'fish', equipment:'equipment' };
-  var TAB_ENDPOINT = { tests:'/water-tests', changes:'/water-changes', fish:'/fish', equipment:'/equipment' };
+  var TAB_ORDER = ['tests','changes','fish','equipment','expenses'];
+  var TAB_STATE_KEY = { tests:'waterTests', changes:'waterChanges', fish:'fish', equipment:'equipment', expenses:'expenses' };
+  var TAB_ENDPOINT = { tests:'/water-tests', changes:'/water-changes', fish:'/fish', equipment:'/equipment', expenses:'/expenses' };
 
   /* ---------------- utilities ---------------- */
   function pad(n){ return n<10 ? '0'+n : ''+n; }
@@ -468,13 +485,15 @@
       apiGet('/water-changes'),
       apiGet('/fish'),
       apiGet('/equipment'),
+      apiGet('/expenses'),
       apiGet('/settings')
     ]).then(function(results){
       STATE.waterTests = results[0] || [];
       STATE.waterChanges = results[1] || [];
       STATE.fish = results[2] || [];
       STATE.equipment = results[3] || [];
-      var settings = results[4] || {};
+      STATE.expenses = results[4] || [];
+      var settings = results[5] || {};
       STATE.tankName = settings.tank_name || 'My Aquarium';
       STATE.settings.waterTestIntervalDays = parseInt(settings.water_test_interval_days, 10) || 7;
       STATE.settings.waterChangeIntervalDays = parseInt(settings.water_change_interval_days, 10) || 14;
@@ -495,7 +514,8 @@
     if(tabKey === 'tests') return { date:data.date, ph:data.ph, ammonia:data.ammonia, nitrite:data.nitrite, nitrate:data.nitrate, temp:data.temp, notes:data.notes };
     if(tabKey === 'changes') return { date:data.date, percent:data.percent, notes:data.notes };
     if(tabKey === 'fish') return { dateAdded:data.dateAdded, species:data.species, name:data.name, quantity:data.quantity, notes:data.notes };
-    return { date:data.date, item:data.item, cost:data.cost, wattage:data.wattage, hoursPerDay:data.hoursPerDay, notes:data.notes };
+    if(tabKey === 'equipment') return { date:data.date, item:data.item, cost:data.cost, wattage:data.wattage, hoursPerDay:data.hoursPerDay, notes:data.notes };
+    return { date:data.date, category:data.category, item:data.item, cost:data.cost, notes:data.notes };
   }
 
   function addEntry(tabKey, data){
@@ -794,6 +814,9 @@
 
     var totalSpend = equipment.reduce(function(sum,e){ return sum + (parseFloat(e.cost)||0); }, 0);
 
+    var expenses = STATE.expenses || [];
+    var totalExpenses = expenses.reduce(function(sum,e){ return sum + (parseFloat(e.cost)||0); }, 0);
+
     var power = totalMonthlyPower(equipment);
     var rate = num(STATE.settings.electricityRate);
     var powerValue, powerSub;
@@ -816,6 +839,8 @@
         speciesCount ? (speciesCount + (speciesCount===1?' species':' species')) : 'None added yet', '') +
       statTile('Equipment logged', String(equipment.length), null,
         totalSpend ? ('$'+totalSpend.toFixed(2)+' total') : 'No purchases yet', '') +
+      statTile('Expenses logged', String(expenses.length), null,
+        totalExpenses ? ('$'+totalExpenses.toFixed(2)+' total') : 'No purchases yet', '') +
       statTile('Est. power cost', powerValue, null, powerSub, '') +
     '</section>';
   }
@@ -896,10 +921,19 @@
     var cfg = FIELD_CONFIG[tabKey];
     var fieldsHtml = cfg.fields.map(function(f){
       var val = f.type==='date' && f.key==='date' ? todayISO() : (f.type==='date' && f.key==='dateAdded' ? todayISO() : '');
-      var attrs = 'name="'+f.key+'" type="'+f.type+'"' +
-        (f.step?' step="'+f.step+'"':'') + (f.min?' min="'+f.min+'"':'') + (f.max?' max="'+f.max+'"':'') +
-        (f.required?' required':'') + (val?' value="'+val+'"':'');
-      return '<div class="field'+(f.wide?' wide':'')+'"><label for="f_'+f.key+'">'+escapeHtml(f.label)+'</label><input id="f_'+f.key+'" '+attrs+'></div>';
+      var control;
+      if(f.type === 'select'){
+        var optsHtml = (f.options||[]).map(function(o){
+          return '<option value="'+escapeHtml(o)+'">'+escapeHtml(o)+'</option>';
+        }).join('');
+        control = '<select id="f_'+f.key+'" name="'+f.key+'"'+(f.required?' required':'')+'>'+optsHtml+'</select>';
+      } else {
+        var attrs = 'name="'+f.key+'" type="'+f.type+'"' +
+          (f.step?' step="'+f.step+'"':'') + (f.min?' min="'+f.min+'"':'') + (f.max?' max="'+f.max+'"':'') +
+          (f.required?' required':'') + (val?' value="'+val+'"':'');
+        control = '<input id="f_'+f.key+'" '+attrs+'>';
+      }
+      return '<div class="field'+(f.wide?' wide':'')+'"><label for="f_'+f.key+'">'+escapeHtml(f.label)+'</label>'+control+'</div>';
     }).join('');
     return '<form class="entry-form" id="addForm" data-tab="'+tabKey+'">' +
       '<div class="field-grid">'+fieldsHtml+'</div>' +
