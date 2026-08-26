@@ -251,6 +251,14 @@
 
   .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 
+  /* ---------- spending breakdown ---------- */
+  .spend-bars{ display:flex; flex-direction:column; gap:10px; margin-top:4px; }
+  .spend-bar-row{ display:grid; grid-template-columns: 1fr 76px; grid-template-areas: "label value" "track track"; row-gap:4px; align-items:center; column-gap:10px; }
+  .spend-bar-label{ grid-area:label; font-size:0.78rem; color: var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .spend-bar-value{ grid-area:value; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:0.78rem; text-align:right; color: var(--ink); }
+  .spend-bar-track{ grid-area:track; height:9px; border-radius:6px; background: var(--surface-2); overflow:hidden; }
+  .spend-bar-fill{ height:100%; border-radius:6px; }
+
   .load-state{ display:flex; flex-direction:column; align-items:flex-start; gap:14px; padding: 60px 0; }
   .load-state p{ color: var(--ink-2); margin:0; }
 
@@ -455,6 +463,63 @@
       if(kwh != null){ totalKwh += kwh; anyDevices = true; }
     });
     return { totalKwh: totalKwh, anyDevices: anyDevices };
+  }
+
+  // Spending overview: Equipment and Expenses are tracked as two separate
+  // pools (durable, power-drawing gear vs. ongoing consumables) but "how much
+  // has this tank cost me" only means something if they're added back
+  // together. These helpers do that combining without touching either tab's
+  // own totals.
+  function categorySpendBreakdown(){
+    var totals = {};
+    (STATE.expenses||[]).forEach(function(e){
+      var cost = parseFloat(e.cost);
+      if(!isFinite(cost) || cost<=0) return;
+      var c = (e.category||'').trim() || 'Other';
+      totals[c] = (totals[c]||0) + cost;
+    });
+    var equipTotal = (STATE.equipment||[]).reduce(function(sum,e){
+      var c = parseFloat(e.cost);
+      return sum + (isFinite(c) ? c : 0);
+    }, 0);
+    if(equipTotal > 0){ totals['Equipment'] = equipTotal; }
+    var rows = Object.keys(totals).map(function(k){ return { label:k, value: totals[k] }; });
+    rows.sort(function(a,b){ return b.value - a.value; });
+    return rows;
+  }
+  function combinedLifetimeSpend(){
+    var expTotal = (STATE.expenses||[]).reduce(function(sum,e){ var c=parseFloat(e.cost); return sum + (isFinite(c)?c:0); }, 0);
+    var equipTotal = (STATE.equipment||[]).reduce(function(sum,e){ var c=parseFloat(e.cost); return sum + (isFinite(c)?c:0); }, 0);
+    return expTotal + equipTotal;
+  }
+  function cumulativeSpendSeries(){
+    var dateTotals = {};
+    (STATE.equipment||[]).forEach(function(e){
+      var c = parseFloat(e.cost);
+      if(isFinite(c) && c>0 && e.date){ dateTotals[e.date] = (dateTotals[e.date]||0) + c; }
+    });
+    (STATE.expenses||[]).forEach(function(e){
+      var c = parseFloat(e.cost);
+      if(isFinite(c) && c>0 && e.date){ dateTotals[e.date] = (dateTotals[e.date]||0) + c; }
+    });
+    var dates = Object.keys(dateTotals).sort();
+    var running = 0;
+    return dates.map(function(d){ running += dateTotals[d]; return { x:d, y:running }; });
+  }
+  var SPEND_PALETTE = ['var(--accent)','var(--copper)','var(--nitrate)','var(--nitrite)','var(--amm)','var(--warning)'];
+  function renderSpendBars(rows){
+    if(!rows.length) return '<div class="chart-empty">No priced purchases logged yet.</div>';
+    var max = Math.max.apply(null, rows.map(function(r){ return r.value; }));
+    if(max <= 0) return '<div class="chart-empty">No priced purchases logged yet.</div>';
+    return '<div class="spend-bars">' + rows.map(function(r, i){
+      var pct = Math.max(4, Math.round((r.value / max) * 100));
+      var color = SPEND_PALETTE[i % SPEND_PALETTE.length];
+      return '<div class="spend-bar-row">' +
+        '<span class="spend-bar-label">'+escapeHtml(r.label)+'</span>' +
+        '<span class="spend-bar-value">$'+r.value.toFixed(2)+'</span>' +
+        '<div class="spend-bar-track"><div class="spend-bar-fill" style="width:'+pct+'%;background:'+color+'"></div></div>' +
+      '</div>';
+    }).join('') + '</div>';
   }
 
   /* ---------------- API ---------------- */
@@ -773,6 +838,7 @@
         renderHeader() +
         renderStatGrid() +
         renderChemistryCharts() +
+        renderSpendingOverview() +
         renderLogSection() +
         renderFooter() +
       '</div>' +
@@ -892,6 +958,19 @@
           '<div class="chart-legend"><span><i style="background:var(--amm)"></i>Ammonia</span><span><i style="background:var(--nitrite)"></i>Nitrite</span><span><i style="background:var(--nitrate)"></i>Nitrate</span></div>' +
         '</div>' +
         '<div class="chart-card"><h3>Temperature (°C)</h3>' + renderLineChart(tempSeries, {ariaLabel:'Temperature over time', emptyText:'Log a temperature reading to see this trend.'}) + '</div>' +
+      '</div>' +
+    '</section>';
+  }
+
+  function renderSpendingOverview(){
+    var rows = categorySpendBreakdown();
+    var total = combinedLifetimeSpend();
+    var series = [{ label:'Total spent', color:'var(--accent)', points: cumulativeSpendSeries() }];
+    return '<section aria-label="Spending overview">' +
+      '<div class="section-heading"><h2>Spending</h2><span class="hint">Lifetime total: $'+total.toFixed(2)+'</span></div>' +
+      '<div class="chart-grid">' +
+        '<div class="chart-card"><h3>By category</h3>' + renderSpendBars(rows) + '</div>' +
+        '<div class="chart-card"><h3>Cumulative spend</h3>' + renderLineChart(series, {ariaLabel:'Cumulative spend over time', zeroFloor:true, emptyText:'Log at least two priced purchases to see a spending trend.'}) + '</div>' +
       '</div>' +
     '</section>';
   }
