@@ -351,7 +351,20 @@
       noun: 'expense', plural: 'Expenses',
       fields: [
         { key:'date', label:'Date', type:'date', required:true },
-        { key:'category', label:'Category', type:'select', options:['Food','Chemicals','Parts','Other'], required:true },
+        { key:'category', label:'Category', type:'select', allowCustom:true, required:true,
+          options: function(){
+            var base = ['Food','Chemicals','Parts','Other'];
+            var seen = {};
+            base.forEach(function(c){ seen[c.toLowerCase()] = true; });
+            var custom = [];
+            (STATE.expenses||[]).forEach(function(e){
+              var c = (e.category||'').trim();
+              if(c && !seen[c.toLowerCase()]){ seen[c.toLowerCase()] = true; custom.push(c); }
+            });
+            custom.sort(function(a,b){ return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
+            return base.concat(custom);
+          }
+        },
         { key:'item', label:'Item', type:'text', required:true },
         { key:'cost', label:'Cost ($)', type:'number', step:'any', min:'0' },
         { key:'notes', label:'Notes', type:'text', wide:true }
@@ -923,10 +936,15 @@
       var val = f.type==='date' && f.key==='date' ? todayISO() : (f.type==='date' && f.key==='dateAdded' ? todayISO() : '');
       var control;
       if(f.type === 'select'){
-        var optsHtml = (f.options||[]).map(function(o){
+        var opts = typeof f.options === 'function' ? f.options() : (f.options||[]);
+        var optsHtml = opts.map(function(o){
           return '<option value="'+escapeHtml(o)+'">'+escapeHtml(o)+'</option>';
         }).join('');
+        if(f.allowCustom){ optsHtml += '<option value="__new__">+ Add new '+escapeHtml(f.label.toLowerCase())+'…</option>'; }
         control = '<select id="f_'+f.key+'" name="'+f.key+'"'+(f.required?' required':'')+'>'+optsHtml+'</select>';
+        if(f.allowCustom){
+          control += '<input type="text" id="f_'+f.key+'_new" class="custom-option-input" placeholder="New '+escapeHtml(f.label.toLowerCase())+' name" style="display:none;margin-top:6px;">';
+        }
       } else {
         var attrs = 'name="'+f.key+'" type="'+f.type+'"' +
           (f.step?' step="'+f.step+'"':'') + (f.min?' min="'+f.min+'"':'') + (f.max?' max="'+f.max+'"':'') +
@@ -1013,6 +1031,14 @@
 
     var form = document.getElementById('addForm');
     if(form){
+      form.querySelectorAll('select').forEach(function(sel){
+        var customEl = document.getElementById(sel.id + '_new');
+        if(!customEl) return;
+        sel.addEventListener('change', function(){
+          if(sel.value === '__new__'){ customEl.style.display = 'block'; customEl.focus(); }
+          else { customEl.style.display = 'none'; customEl.value = ''; }
+        });
+      });
       form.addEventListener('submit', function(e){
         e.preventDefault();
         var tabKey = form.getAttribute('data-tab');
@@ -1022,7 +1048,20 @@
         cfg.fields.forEach(function(f){
           var el = document.getElementById('f_'+f.key);
           var v = el ? el.value : '';
-          if(f.required && !v){ valid = false; el.focus(); }
+          var focusEl = el;
+          if(f.allowCustom && v === '__new__'){
+            var customEl = document.getElementById('f_'+f.key+'_new');
+            v = customEl ? customEl.value.trim() : '';
+            focusEl = customEl || el;
+            // Reuse the existing option's casing if this "new" category is really
+            // just a re-typed match (e.g. "food" for the existing "Food") — avoids
+            // splitting one category into look-alike duplicates in the dropdown.
+            if(v && typeof f.options === 'function'){
+              var match = f.options().filter(function(o){ return o.toLowerCase() === v.toLowerCase(); })[0];
+              if(match) v = match;
+            }
+          }
+          if(f.required && !v){ valid = false; if(focusEl) focusEl.focus(); }
           data[f.key] = v;
         });
         if(!valid){ pushToast('Please fill in the required fields.'); return; }
