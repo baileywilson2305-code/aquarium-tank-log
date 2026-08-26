@@ -1,14 +1,19 @@
-import { json, errorResponse, uid, num, str, readJson } from '../_utils.js';
+import { json, errorResponse, uid, num, str, readJson, requireTankIdFromUrl } from '../_utils.js';
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env }) {
+  const tankId = requireTankIdFromUrl(request);
+  if (!tankId) return errorResponse('tank_id is required');
+
   const { results } = await env.DB.prepare(
-    'SELECT id, date_added AS dateAdded, species, name, quantity, notes FROM fish ORDER BY date_added DESC, created_at DESC'
-  ).all();
+    'SELECT id, date_added AS dateAdded, species, name, quantity, notes FROM fish WHERE tank_id = ? ORDER BY date_added DESC, created_at DESC'
+  ).bind(tankId).all();
   return json(results);
 }
 
 export async function onRequestPost({ request, env }) {
   const body = await readJson(request);
+  const tankId = body ? str(body.tankId) : null;
+  if (!tankId) return errorResponse('tankId is required');
   if (!body || !str(body.dateAdded) || !str(body.species)) {
     return errorResponse('dateAdded and species are required');
   }
@@ -16,9 +21,9 @@ export async function onRequestPost({ request, env }) {
   const id = uid();
   const quantity = num(body.quantity) ?? 1;
   await env.DB.prepare(
-    `INSERT INTO fish (id, date_added, species, name, quantity, notes) VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO fish (id, date_added, species, name, quantity, notes, tank_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(id, str(body.dateAdded), str(body.species), str(body.name), quantity, str(body.notes))
+    .bind(id, str(body.dateAdded), str(body.species), str(body.name), quantity, str(body.notes), tankId)
     .run();
 
   return json({
