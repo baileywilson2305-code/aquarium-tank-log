@@ -194,6 +194,16 @@
   .series-dot{ stroke: var(--surface); stroke-width:2; }
   .end-label{ font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; font-weight:600; }
 
+  /* ---------- tank switcher ---------- */
+  .tank-switcher{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin: 4px 0 2px; }
+  .tank-switch-btn{ appearance:none; border:1px solid var(--line-strong); background: var(--surface-2); color: var(--ink-2); font: inherit; font-size:0.78rem; font-weight:600; padding: 6px 13px; border-radius:999px; cursor:pointer; }
+  .tank-switch-btn:hover{ color: var(--ink); border-color: var(--ink-3); }
+  .tank-switch-btn.active{ background: var(--copper); color: var(--copper-soft); border-color: var(--copper); }
+  .tank-switch-btn.tank-switch-add{ background:transparent; border-style:dashed; color: var(--ink-3); }
+  .tank-switch-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset:2px; }
+  .tank-add-inline{ display:inline-flex; align-items:center; gap:6px; }
+  .tank-add-inline input{ font: inherit; font-size:0.82rem; padding: 6px 10px; border-radius:999px; border:1px solid var(--line-strong); background: var(--surface); color: var(--ink); width:160px; }
+
   /* ---------- page nav ---------- */
   .page-nav{ display:flex; gap:6px; flex-wrap:wrap; margin: 22px 0 26px; }
   .page-nav-btn{ appearance:none; border:1px solid var(--line-strong); background: var(--surface); color: var(--ink-2); font: inherit; font-size:0.82rem; font-weight:600; padding: 8px 15px; border-radius:999px; cursor:pointer; }
@@ -280,15 +290,21 @@
 <script>
 (function(){
 
-  var ui = { activePage: 'overview', activeTab: 'tests', showAddForm: false, editingName: false, toasts: [] };
+  var ui = { activePage: 'overview', activeTab: 'tests', showAddForm: false, editingName: false, addingTank: false, toasts: [] };
   var STATE = {
-    tankName: 'My Aquarium',
+    tanks: [], activeTankId: null,
     settings: { waterTestIntervalDays: 7, waterChangeIntervalDays: 14, electricityRate: null },
     waterTests: [], waterChanges: [], fish: [], equipment: [], expenses: [],
     loaded: false
   };
   var saveState = 'loading'; // loading | saving | error | idle
   var lastSyncedAt = null;
+  var TANK_STORAGE_KEY = 'aquarium-active-tank-id';
+
+  function activeTank(){
+    var found = (STATE.tanks||[]).filter(function(t){ return t.id === STATE.activeTankId; })[0];
+    return found || { id: null, name: 'My Aquarium' };
+  }
 
   var FIELD_CONFIG = {
     tests: {
@@ -571,16 +587,55 @@
     });
   }
 
-  function loadAll(){
+  // Boot sequence: fetch the list of tanks first (there's always at least
+  // one), pick up where the user left off via localStorage if that tank
+  // still exists, then load that tank's own data. Switching tanks later just
+  // re-runs loadTankData() — the tanks list itself doesn't need refetching.
+  function loadTanksThenAll(){
+    saveState = 'loading';
+    STATE.loaded = false;
+    render();
+    apiGet('/tanks').then(function(tanks){
+      STATE.tanks = tanks || [];
+      if(!STATE.tanks.length){
+        saveState = 'error';
+        render();
+        pushToast('No tanks found — something is wrong with the database.');
+        return;
+      }
+      var stored = null;
+      try { stored = localStorage.getItem(TANK_STORAGE_KEY); } catch(e){}
+      var match = STATE.tanks.filter(function(t){ return t.id === stored; })[0];
+      STATE.activeTankId = match ? match.id : STATE.tanks[0].id;
+      loadTankData();
+    }).catch(function(err){
+      saveState = 'error';
+      render();
+      pushToast('Could not load your tanks: ' + err.message);
+    });
+  }
+
+  function switchTank(tankId){
+    if(tankId === STATE.activeTankId) return;
+    STATE.activeTankId = tankId;
+    try { localStorage.setItem(TANK_STORAGE_KEY, tankId); } catch(e){}
+    ui.activePage = 'overview';
+    ui.activeTab = 'tests';
+    ui.showAddForm = false;
+    loadTankData();
+  }
+
+  function loadTankData(){
     saveState = 'loading';
     render();
+    var q = '?tank_id=' + encodeURIComponent(STATE.activeTankId);
     Promise.all([
-      apiGet('/water-tests'),
-      apiGet('/water-changes'),
-      apiGet('/fish'),
-      apiGet('/equipment'),
-      apiGet('/expenses'),
-      apiGet('/settings')
+      apiGet('/water-tests'+q),
+      apiGet('/water-changes'+q),
+      apiGet('/fish'+q),
+      apiGet('/equipment'+q),
+      apiGet('/expenses'+q),
+      apiGet('/settings'+q)
     ]).then(function(results){
       STATE.waterTests = results[0] || [];
       STATE.waterChanges = results[1] || [];
@@ -588,7 +643,6 @@
       STATE.equipment = results[3] || [];
       STATE.expenses = results[4] || [];
       var settings = results[5] || {};
-      STATE.tankName = settings.tank_name || 'My Aquarium';
       STATE.settings.waterTestIntervalDays = parseInt(settings.water_test_interval_days, 10) || 7;
       STATE.settings.waterChangeIntervalDays = parseInt(settings.water_change_interval_days, 10) || 14;
       STATE.settings.electricityRate = (settings.electricity_rate!=null && settings.electricity_rate!=='') ? parseFloat(settings.electricity_rate) : null;
@@ -599,7 +653,7 @@
     }).catch(function(err){
       saveState = 'error';
       render();
-      pushToast('Could not load your tank data: ' + err.message);
+      pushToast('Could not load this tank’s data: ' + err.message);
     });
   }
 
@@ -616,7 +670,9 @@
     ui.showAddForm = false;
     saveState = 'saving';
     render();
-    apiSend('POST', TAB_ENDPOINT[tabKey], buildPayload(tabKey, data)).then(function(created){
+    var payload = buildPayload(tabKey, data);
+    payload.tankId = STATE.activeTankId;
+    apiSend('POST', TAB_ENDPOINT[tabKey], payload).then(function(created){
       STATE[TAB_STATE_KEY[tabKey]].push(created);
       saveState = 'idle';
       lastSyncedAt = new Date();
@@ -648,20 +704,37 @@
     if(!ui.editingName) return; // guards against the reentrant blur fired while the input is being removed from the DOM
     name = (name||'').trim();
     ui.editingName = false;
-    if(!name || name === STATE.tankName){ render(); return; }
-    var previous = STATE.tankName;
-    STATE.tankName = name;
+    var tank = activeTank();
+    if(!name || name === tank.name){ render(); return; }
+    var previous = tank.name;
+    tank.name = name;
     saveState = 'saving';
     render();
-    apiSend('PUT', '/settings', { tank_name: name }).then(function(){
+    apiSend('PUT', '/tanks/'+encodeURIComponent(tank.id), { name: name }).then(function(){
       saveState = 'idle';
       lastSyncedAt = new Date();
       render();
     }).catch(function(err){
-      STATE.tankName = previous;
+      tank.name = previous;
       saveState = 'error';
       render();
       pushToast('Could not rename tank: ' + err.message);
+    });
+  }
+
+  function addTank(name){
+    name = (name||'').trim();
+    if(!name) return;
+    ui.addingTank = false;
+    saveState = 'saving';
+    render();
+    apiSend('POST', '/tanks', { name: name }).then(function(created){
+      STATE.tanks.push(created);
+      switchTank(created.id);
+    }).catch(function(err){
+      saveState = 'error';
+      render();
+      pushToast('Could not add tank: ' + err.message);
     });
   }
 
@@ -669,11 +742,11 @@
     var t = parseInt(testInterval,10), c = parseInt(changeInterval,10);
     var r = parseFloat(electricityRate);
     var rateValid = !isNaN(r) && r>=0;
-    var payload = {};
+    var payload = { tankId: STATE.activeTankId };
     if(t>0) payload.water_test_interval_days = t;
     if(c>0) payload.water_change_interval_days = c;
     if(rateValid) payload.electricity_rate = r;
-    if(!Object.keys(payload).length) return;
+    if(Object.keys(payload).length <= 1) return;
     saveState = 'saving';
     render();
     apiSend('PUT', '/settings', payload).then(function(){
@@ -824,12 +897,12 @@
   }
   function exportCsv(tabKey){
     var csv = tabToCsv(tabKey);
-    var filename = (STATE.tankName||'tank').toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-' + tabKey + '.csv';
+    var filename = (activeTank().name||'tank').toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-' + tabKey + '.csv';
     downloadFile(filename, csv, 'text/csv');
   }
   function exportBackup(){
     var json = JSON.stringify(STATE, null, 2);
-    var filename = (STATE.tankName||'tank').toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-backup.json';
+    var filename = (activeTank().name||'tank').toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-backup.json';
     downloadFile(filename, json, 'application/json');
   }
 
@@ -864,11 +937,25 @@
 
     return '' +
       '<div class="wrap">' +
+        renderTankSwitcher() +
         renderHeader() +
         renderPageNav() +
         pageContent +
       '</div>' +
       renderToasts();
+  }
+
+  function renderTankSwitcher(){
+    var tabs = STATE.tanks.map(function(t){
+      var cls = 'tank-switch-btn' + (t.id===STATE.activeTankId ? ' active' : '');
+      return '<button type="button" role="tab" aria-selected="'+(t.id===STATE.activeTankId)+'" class="'+cls+'" data-tank-id="'+t.id+'">'+escapeHtml(t.name)+'</button>';
+    }).join('');
+    var addControl = ui.addingTank
+      ? '<span class="tank-add-inline"><input type="text" id="newTankNameInput" placeholder="Tank name" maxlength="60">' +
+        '<button type="button" class="btn-ghost" id="confirmAddTankBtn">Add</button>' +
+        '<button type="button" class="btn-ghost" id="cancelAddTankBtn">Cancel</button></span>'
+      : '<button type="button" class="tank-switch-btn tank-switch-add" id="addTankBtn">+ Add tank</button>';
+    return '<nav class="tank-switcher" role="tablist" aria-label="Tanks">'+tabs+addControl+'</nav>';
   }
 
   function renderPageNav(){
@@ -888,8 +975,8 @@
     else { indicatorClass += ' neutral'; indicatorText = 'Synced'; }
 
     var nameBlock = ui.editingName
-      ? '<input class="wordmark-input" id="tankNameInput" type="text" value="'+escapeHtml(STATE.tankName)+'" maxlength="60">'
-      : '<h1 class="wordmark" id="tankNameDisplay" tabindex="0" role="button" aria-label="Click to rename your tank">'+escapeHtml(STATE.tankName)+'</h1>';
+      ? '<input class="wordmark-input" id="tankNameInput" type="text" value="'+escapeHtml(activeTank().name)+'" maxlength="60">'
+      : '<h1 class="wordmark" id="tankNameDisplay" tabindex="0" role="button" aria-label="Click to rename your tank">'+escapeHtml(activeTank().name)+'</h1>';
 
     return '' +
       '<header class="hero">' +
@@ -1103,7 +1190,25 @@
     var app = document.getElementById('app');
 
     var retryBtn = document.getElementById('retryLoadBtn');
-    if(retryBtn){ retryBtn.addEventListener('click', loadAll); }
+    if(retryBtn){ retryBtn.addEventListener('click', function(){ STATE.tanks.length ? loadTankData() : loadTanksThenAll(); }); }
+
+    app.querySelectorAll('.tank-switch-btn[data-tank-id]').forEach(function(btn){
+      btn.addEventListener('click', function(){ switchTank(btn.getAttribute('data-tank-id')); });
+    });
+    var addTankBtn = document.getElementById('addTankBtn');
+    if(addTankBtn){ addTankBtn.addEventListener('click', function(){ ui.addingTank = true; render(); var el=document.getElementById('newTankNameInput'); if(el) el.focus(); }); }
+    var newTankInput = document.getElementById('newTankNameInput');
+    if(newTankInput){
+      newTankInput.focus();
+      newTankInput.addEventListener('keydown', function(e){
+        if(e.key==='Enter'){ addTank(newTankInput.value); }
+        if(e.key==='Escape'){ ui.addingTank=false; render(); }
+      });
+    }
+    var confirmAddTankBtn = document.getElementById('confirmAddTankBtn');
+    if(confirmAddTankBtn){ confirmAddTankBtn.addEventListener('click', function(){ addTank(document.getElementById('newTankNameInput').value); }); }
+    var cancelAddTankBtn = document.getElementById('cancelAddTankBtn');
+    if(cancelAddTankBtn){ cancelAddTankBtn.addEventListener('click', function(){ ui.addingTank=false; render(); }); }
 
     var nameDisplay = document.getElementById('tankNameDisplay');
     if(nameDisplay){
@@ -1206,7 +1311,7 @@
     });
   }
 
-  loadAll();
+  loadTanksThenAll();
 })();
 </script>
 </body>
