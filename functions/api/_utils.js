@@ -38,3 +38,13 @@ export async function readJson(request) {
     return null;
   }
 }
+
+// Every log resource belongs to exactly one tank. GET reads it from the
+// ?tank_id= query param; POST bodies carry it as tankId. Centralizing the
+// "which tank" extraction here means every route fails the same way (a
+// clear 400) if the frontend ever forgets to send it, rather than silently
+// returning/writing cross-tank data.
+export function requireTankIdFromUrl(request) {
+  const url = new URL(request.url);
+  return str(url.searchParams.get('tank_id'));
+}
