@@ -194,6 +194,13 @@
   .series-dot{ stroke: var(--surface); stroke-width:2; }
   .end-label{ font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; font-weight:600; }
 
+  /* ---------- page nav ---------- */
+  .page-nav{ display:flex; gap:6px; flex-wrap:wrap; margin: 22px 0 26px; }
+  .page-nav-btn{ appearance:none; border:1px solid var(--line-strong); background: var(--surface); color: var(--ink-2); font: inherit; font-size:0.82rem; font-weight:600; padding: 8px 15px; border-radius:999px; cursor:pointer; }
+  .page-nav-btn:hover{ color: var(--ink); border-color: var(--ink-3); }
+  .page-nav-btn.active{ background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .page-nav-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset:2px; }
+
   /* ---------- tabs ---------- */
   .log-section{ margin-bottom: 28px; }
   .tab-bar{ display:flex; gap:4px; border-bottom: 1px solid var(--line); margin-bottom:16px; overflow-x:auto; }
@@ -273,7 +280,7 @@
 <script>
 (function(){
 
-  var ui = { activeTab: 'tests', showAddForm: false, editingName: false, toasts: [] };
+  var ui = { activePage: 'overview', activeTab: 'tests', showAddForm: false, editingName: false, toasts: [] };
   var STATE = {
     tankName: 'My Aquarium',
     settings: { waterTestIntervalDays: 7, waterChangeIntervalDays: 14, electricityRate: null },
@@ -389,6 +396,15 @@
   var TAB_ORDER = ['tests','changes','fish','equipment','expenses'];
   var TAB_STATE_KEY = { tests:'waterTests', changes:'waterChanges', fish:'fish', equipment:'equipment', expenses:'expenses' };
   var TAB_ENDPOINT = { tests:'/water-tests', changes:'/water-changes', fish:'/fish', equipment:'/equipment', expenses:'/expenses' };
+
+  // Top-level page nav: this is purely a navigation split of the one tank's
+  // page (stats / water / livestock & gear / spending / settings) — no new
+  // data, no multi-tank support. PAGE_TABS says which of the log tabs above
+  // show up on a given page; pages with no entry (overview, settings) render
+  // their own fixed content instead of the shared log-section component.
+  var PAGE_ORDER = ['overview','water','livestock','spending','settings'];
+  var PAGE_LABELS = { overview:'Overview', water:'Water', livestock:'Livestock & Gear', spending:'Spending', settings:'Settings' };
+  var PAGE_TABS = { water:['tests','changes'], livestock:['fish','equipment'], spending:['expenses'] };
 
   /* ---------------- utilities ---------------- */
   function pad(n){ return n<10 ? '0'+n : ''+n; }
@@ -833,16 +849,34 @@
       }
       return '<div class="wrap"><div class="load-state"><span class="eyebrow">Tank log</span><p>Loading your tank…</p></div></div>' + renderToasts();
     }
+    var pageContent;
+    if(ui.activePage === 'water'){
+      pageContent = renderChemistryCharts() + renderLogSection(PAGE_TABS.water);
+    } else if(ui.activePage === 'livestock'){
+      pageContent = renderLogSection(PAGE_TABS.livestock);
+    } else if(ui.activePage === 'spending'){
+      pageContent = renderSpendingOverview() + renderLogSection(PAGE_TABS.spending);
+    } else if(ui.activePage === 'settings'){
+      pageContent = renderFooter();
+    } else {
+      pageContent = renderStatGrid();
+    }
+
     return '' +
       '<div class="wrap">' +
         renderHeader() +
-        renderStatGrid() +
-        renderChemistryCharts() +
-        renderSpendingOverview() +
-        renderLogSection() +
-        renderFooter() +
+        renderPageNav() +
+        pageContent +
       '</div>' +
       renderToasts();
+  }
+
+  function renderPageNav(){
+    var items = PAGE_ORDER.map(function(key){
+      var cls = 'page-nav-btn' + (ui.activePage===key ? ' active' : '');
+      return '<button type="button" role="tab" aria-selected="'+(ui.activePage===key)+'" class="'+cls+'" data-page="'+key+'">'+escapeHtml(PAGE_LABELS[key])+'</button>';
+    }).join('');
+    return '<nav class="page-nav" role="tablist" aria-label="Sections">'+items+'</nav>';
   }
 
   function renderHeader(){
@@ -975,17 +1009,24 @@
     '</section>';
   }
 
-  function renderLogSection(){
-    var tabs = TAB_ORDER.map(function(key){
+  function renderLogSection(visibleTabs){
+    var tabKeys = visibleTabs || TAB_ORDER;
+    // If ui.activeTab is left over from another page (or hasn't been set for
+    // this page group yet), fall back to the first tab this page actually
+    // shows rather than rendering a blank/mismatched table.
+    var activeTab = tabKeys.indexOf(ui.activeTab) !== -1 ? ui.activeTab : tabKeys[0];
+    ui.activeTab = activeTab;
+
+    var tabs = tabKeys.map(function(key){
       var cfg = FIELD_CONFIG[key];
-      var cls = 'tab-btn' + (ui.activeTab===key ? ' active' : '');
-      return '<button type="button" role="tab" aria-selected="'+(ui.activeTab===key)+'" class="'+cls+'" data-tab="'+key+'">'+cfg.plural+' <span style="opacity:.6">('+STATE[TAB_STATE_KEY[key]].length+')</span></button>';
+      var cls = 'tab-btn' + (activeTab===key ? ' active' : '');
+      return '<button type="button" role="tab" aria-selected="'+(activeTab===key)+'" class="'+cls+'" data-tab="'+key+'">'+cfg.plural+' <span style="opacity:.6">('+STATE[TAB_STATE_KEY[key]].length+')</span></button>';
     }).join('');
 
-    var cfg = FIELD_CONFIG[ui.activeTab];
-    var rows = sortedByDate(STATE[TAB_STATE_KEY[ui.activeTab]], cfg.fields[0].key);
+    var cfg = FIELD_CONFIG[activeTab];
+    var rows = sortedByDate(STATE[TAB_STATE_KEY[activeTab]], cfg.fields[0].key);
 
-    var formHtml = ui.showAddForm ? renderEntryForm(ui.activeTab) : '';
+    var formHtml = ui.showAddForm ? renderEntryForm(activeTab) : '';
 
     var tableRows = rows.length ? rows.map(function(r){
       var cells = cfg.columns.map(function(c){
@@ -993,7 +1034,7 @@
         if(c.key === 'estCost') return '<td class="'+cls+'">'+estCostCell(r)+'</td>';
         return '<td class="'+cls+'">'+escapeHtml(fmtCell(r[c.key], c))+'</td>';
       }).join('');
-      return '<tr>'+cells+'<td><button type="button" class="row-delete" data-delete-tab="'+ui.activeTab+'" data-delete-id="'+r.id+'">Delete</button></td></tr>';
+      return '<tr>'+cells+'<td><button type="button" class="row-delete" data-delete-tab="'+activeTab+'" data-delete-id="'+r.id+'">Delete</button></td></tr>';
     }).join('') : '<tr class="empty-row"><td colspan="'+(cfg.columns.length+1)+'">No '+cfg.plural.toLowerCase()+' logged yet.</td></tr>';
 
     var headerCells = cfg.columns.map(function(c){ return '<th>'+escapeHtml(c.label)+'</th>'; }).join('') + '<th><span class="visually-hidden">Actions</span></th>';
@@ -1078,6 +1119,16 @@
       });
       nameInput.addEventListener('blur', function(){ renameTank(nameInput.value); });
     }
+
+    app.querySelectorAll('.page-nav-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var page = btn.getAttribute('data-page');
+        ui.activePage = page;
+        if(PAGE_TABS[page]){ ui.activeTab = PAGE_TABS[page][0]; }
+        ui.showAddForm = false;
+        render();
+      });
+    });
 
     app.querySelectorAll('.tab-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
