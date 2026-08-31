@@ -249,7 +249,8 @@
   tbody td.text-cell{ font-family:'IBM Plex Sans', sans-serif; font-variant-numeric: normal; }
   tbody tr:last-child td{ border-bottom:none; }
   tbody tr:hover{ background: var(--surface-2); }
-  .row-delete{ font: inherit; font-size:0.76rem; font-weight:600; color: var(--ink-3); background:none; border:none; cursor:pointer; padding:4px 6px; border-radius:6px; }
+  .row-edit, .row-delete{ font: inherit; font-size:0.76rem; font-weight:600; color: var(--ink-3); background:none; border:none; cursor:pointer; padding:4px 6px; border-radius:6px; }
+  .row-edit:hover{ color: var(--accent); background: color-mix(in oklab, var(--accent) 10%, transparent); }
   .row-delete:hover{ color: var(--critical); background: color-mix(in oklab, var(--critical) 10%, transparent); }
   .empty-row td{ color: var(--ink-3); font-family:'IBM Plex Sans', sans-serif; text-align:center; padding: 22px; }
 
@@ -290,7 +291,7 @@
 <script>
 (function(){
 
-  var ui = { activePage: 'overview', activeTab: 'tests', showAddForm: false, editingName: false, addingTank: false, toasts: [] };
+  var ui = { activePage: 'overview', activeTab: 'tests', showAddForm: false, editingId: null, editingName: false, addingTank: false, toasts: [] };
   var STATE = {
     tanks: [], activeTankId: null,
     settings: { waterTestIntervalDays: 7, waterChangeIntervalDays: 14, electricityRate: null },
@@ -634,6 +635,7 @@
     ui.activePage = 'overview';
     ui.activeTab = 'tests';
     ui.showAddForm = false;
+    ui.editingId = null;
     loadTankData();
   }
 
@@ -693,6 +695,28 @@
       saveState = 'error';
       render();
       pushToast('Could not save: ' + err.message);
+    });
+  }
+
+  function updateEntry(tabKey, id, data){
+    ui.showAddForm = false;
+    ui.editingId = null;
+    saveState = 'saving';
+    render();
+    var payload = buildPayload(tabKey, data);
+    payload.tankId = STATE.activeTankId;
+    apiSend('PUT', TAB_ENDPOINT[tabKey] + '/' + encodeURIComponent(id), payload).then(function(updated){
+      var list = STATE[TAB_STATE_KEY[tabKey]];
+      var idx = -1;
+      for(var i=0;i<list.length;i++){ if(list[i].id === id){ idx = i; break; } }
+      if(idx !== -1) list[idx] = updated;
+      saveState = 'idle';
+      lastSyncedAt = new Date();
+      render();
+    }).catch(function(err){
+      saveState = 'error';
+      render();
+      pushToast('Could not save changes: ' + err.message);
     });
   }
 
@@ -1126,7 +1150,9 @@
     var cfg = FIELD_CONFIG[activeTab];
     var rows = sortedByDate(STATE[TAB_STATE_KEY[activeTab]], cfg.fields[0].key);
 
-    var formHtml = ui.showAddForm ? renderEntryForm(activeTab) : '';
+    var editingRecord = ui.editingId ? rows.filter(function(r){ return r.id === ui.editingId; })[0] : null;
+    var formOpen = ui.showAddForm || !!editingRecord;
+    var formHtml = formOpen ? renderEntryForm(activeTab, editingRecord) : '';
 
     var tableRows = rows.length ? rows.map(function(r){
       var cells = cfg.columns.map(function(c){
@@ -1134,7 +1160,7 @@
         if(c.key === 'estCost') return '<td class="'+cls+'">'+estCostCell(r)+'</td>';
         return '<td class="'+cls+'">'+escapeHtml(fmtCell(r[c.key], c))+'</td>';
       }).join('');
-      return '<tr>'+cells+'<td><button type="button" class="row-delete" data-delete-tab="'+activeTab+'" data-delete-id="'+r.id+'">Delete</button></td></tr>';
+      return '<tr>'+cells+'<td><button type="button" class="row-edit" data-edit-tab="'+activeTab+'" data-edit-id="'+r.id+'">Edit</button> <button type="button" class="row-delete" data-delete-tab="'+activeTab+'" data-delete-id="'+r.id+'">Delete</button></td></tr>';
     }).join('') : '<tr class="empty-row"><td colspan="'+(cfg.columns.length+1)+'">No '+cfg.plural.toLowerCase()+' logged yet.</td></tr>';
 
     var headerCells = cfg.columns.map(function(c){ return '<th>'+escapeHtml(c.label)+'</th>'; }).join('') + '<th><span class="visually-hidden">Actions</span></th>';
@@ -1142,7 +1168,7 @@
     return '<section class="log-section" aria-label="Tank logs">' +
       '<div class="tab-bar" role="tablist">'+tabs+'</div>' +
       '<div class="panel-toolbar">' +
-        '<button type="button" class="btn-primary" id="toggleAddForm">'+(ui.showAddForm ? 'Cancel' : '+ Add '+cfg.noun)+'</button>' +
+        '<button type="button" class="btn-primary" id="toggleAddForm">'+(formOpen ? 'Cancel' : '+ Add '+cfg.noun)+'</button>' +
         '<button type="button" class="btn-ghost" id="exportCsvBtn">Export CSV</button>' +
       '</div>' +
       formHtml +
@@ -1150,15 +1176,23 @@
     '</section>';
   }
 
-  function renderEntryForm(tabKey){
+  function renderEntryForm(tabKey, record){
     var cfg = FIELD_CONFIG[tabKey];
+    var isEdit = !!record;
     var fieldsHtml = cfg.fields.map(function(f){
-      var val = f.type==='date' && f.key==='date' ? todayISO() : (f.type==='date' && f.key==='dateAdded' ? todayISO() : '');
+      var val;
+      if(isEdit){
+        val = record[f.key];
+        if(val==null) val = '';
+      } else {
+        val = (f.type==='date' && (f.key==='date' || f.key==='dateAdded')) ? todayISO() : '';
+      }
       var control;
       if(f.type === 'select'){
         var opts = typeof f.options === 'function' ? f.options() : (f.options||[]);
         var optsHtml = opts.map(function(o){
-          return '<option value="'+escapeHtml(o)+'">'+escapeHtml(o)+'</option>';
+          var sel = (isEdit && String(val)===o) ? ' selected' : '';
+          return '<option value="'+escapeHtml(o)+'"'+sel+'>'+escapeHtml(o)+'</option>';
         }).join('');
         if(f.allowCustom){ optsHtml += '<option value="__new__">+ Add new '+escapeHtml(f.label.toLowerCase())+'…</option>'; }
         control = '<select id="f_'+f.key+'" name="'+f.key+'"'+(f.required?' required':'')+'>'+optsHtml+'</select>';
@@ -1168,14 +1202,14 @@
       } else {
         var attrs = 'name="'+f.key+'" type="'+f.type+'"' +
           (f.step?' step="'+f.step+'"':'') + (f.min?' min="'+f.min+'"':'') + (f.max?' max="'+f.max+'"':'') +
-          (f.required?' required':'') + (val?' value="'+val+'"':'');
+          (f.required?' required':'') + (val!==''&&val!=null?' value="'+escapeHtml(String(val))+'"':'');
         control = '<input id="f_'+f.key+'" '+attrs+'>';
       }
       return '<div class="field'+(f.wide?' wide':'')+'"><label for="f_'+f.key+'">'+escapeHtml(f.label)+'</label>'+control+'</div>';
     }).join('');
     return '<form class="entry-form" id="addForm" data-tab="'+tabKey+'">' +
       '<div class="field-grid">'+fieldsHtml+'</div>' +
-      '<div class="form-actions"><button type="submit" class="btn-primary">Save '+cfg.noun+'</button></div>' +
+      '<div class="form-actions"><button type="submit" class="btn-primary">'+(isEdit ? 'Save changes' : 'Save '+cfg.noun)+'</button></div>' +
     '</form>';
   }
 
@@ -1244,6 +1278,7 @@
         ui.activePage = page;
         if(PAGE_TABS[page]){ ui.activeTab = PAGE_TABS[page][0]; }
         ui.showAddForm = false;
+        ui.editingId = null;
         render();
       });
     });
@@ -1252,13 +1287,18 @@
       btn.addEventListener('click', function(){
         ui.activeTab = btn.getAttribute('data-tab');
         ui.showAddForm = false;
+        ui.editingId = null;
         render();
       });
     });
 
     var toggleBtn = document.getElementById('toggleAddForm');
     if(toggleBtn){
-      toggleBtn.addEventListener('click', function(){ ui.showAddForm = !ui.showAddForm; render(); });
+      toggleBtn.addEventListener('click', function(){
+        if(ui.showAddForm || ui.editingId){ ui.showAddForm = false; ui.editingId = null; }
+        else { ui.showAddForm = true; }
+        render();
+      });
     }
 
     var exportBtn = document.getElementById('exportCsvBtn');
@@ -1313,9 +1353,18 @@
           data[f.key] = v;
         });
         if(!valid){ pushToast('Please fill in the required fields.'); return; }
-        addEntry(tabKey, data);
+        if(ui.editingId){ updateEntry(tabKey, ui.editingId, data); }
+        else { addEntry(tabKey, data); }
       });
     }
+
+    app.querySelectorAll('[data-edit-id]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        ui.showAddForm = false;
+        ui.editingId = btn.getAttribute('data-edit-id');
+        render();
+      });
+    });
 
     app.querySelectorAll('[data-delete-id]').forEach(function(btn){
       btn.addEventListener('click', function(){
