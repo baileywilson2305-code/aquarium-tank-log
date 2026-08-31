@@ -348,6 +348,7 @@
         { key:'species', label:'Species', type:'text', required:true },
         { key:'name', label:'Nickname', type:'text' },
         { key:'quantity', label:'Quantity', type:'number', step:'1', min:'1' },
+        { key:'cost', label:'Cost ($)', type:'number', step:'any', min:'0' },
         { key:'notes', label:'Notes', type:'text', wide:true }
       ],
       columns: [
@@ -355,6 +356,7 @@
         { key:'species', label:'Species', text:true },
         { key:'name', label:'Nickname', text:true },
         { key:'quantity', label:'Qty' },
+        { key:'cost', label:'Cost', fmt:'money' },
         { key:'notes', label:'Notes', text:true }
       ]
     },
@@ -497,11 +499,11 @@
     return { totalKwh: totalKwh, anyDevices: anyDevices };
   }
 
-  // Spending overview: Equipment and Expenses are tracked as two separate
-  // pools (durable, power-drawing gear vs. ongoing consumables) but "how much
-  // has this tank cost me" only means something if they're added back
-  // together. These helpers do that combining without touching either tab's
-  // own totals.
+  // Spending overview: Equipment, Fish and Expenses are tracked as separate
+  // pools (durable, power-drawing gear vs. livestock vs. ongoing consumables)
+  // but "how much has this tank cost me" only means something if they're
+  // added back together. These helpers do that combining without touching
+  // any individual tab's own totals.
   function categorySpendBreakdown(){
     var totals = {};
     (STATE.expenses||[]).forEach(function(e){
@@ -515,6 +517,11 @@
       return sum + (isFinite(c) ? c : 0);
     }, 0);
     if(equipTotal > 0){ totals['Equipment'] = equipTotal; }
+    var fishTotal = (STATE.fish||[]).reduce(function(sum,f){
+      var c = parseFloat(f.cost);
+      return sum + (isFinite(c) ? c : 0);
+    }, 0);
+    if(fishTotal > 0){ totals['Livestock'] = fishTotal; }
     var rows = Object.keys(totals).map(function(k){ return { label:k, value: totals[k] }; });
     rows.sort(function(a,b){ return b.value - a.value; });
     return rows;
@@ -522,7 +529,8 @@
   function combinedLifetimeSpend(){
     var expTotal = (STATE.expenses||[]).reduce(function(sum,e){ var c=parseFloat(e.cost); return sum + (isFinite(c)?c:0); }, 0);
     var equipTotal = (STATE.equipment||[]).reduce(function(sum,e){ var c=parseFloat(e.cost); return sum + (isFinite(c)?c:0); }, 0);
-    return expTotal + equipTotal;
+    var fishTotal = (STATE.fish||[]).reduce(function(sum,f){ var c=parseFloat(f.cost); return sum + (isFinite(c)?c:0); }, 0);
+    return expTotal + equipTotal + fishTotal;
   }
   function cumulativeSpendSeries(){
     var dateTotals = {};
@@ -533,6 +541,10 @@
     (STATE.expenses||[]).forEach(function(e){
       var c = parseFloat(e.cost);
       if(isFinite(c) && c>0 && e.date){ dateTotals[e.date] = (dateTotals[e.date]||0) + c; }
+    });
+    (STATE.fish||[]).forEach(function(f){
+      var c = parseFloat(f.cost);
+      if(isFinite(c) && c>0 && f.dateAdded){ dateTotals[f.dateAdded] = (dateTotals[f.dateAdded]||0) + c; }
     });
     var dates = Object.keys(dateTotals).sort();
     var running = 0;
@@ -661,7 +673,7 @@
   function buildPayload(tabKey, data){
     if(tabKey === 'tests') return { date:data.date, ph:data.ph, ammonia:data.ammonia, nitrite:data.nitrite, nitrate:data.nitrate, temp:data.temp, notes:data.notes };
     if(tabKey === 'changes') return { date:data.date, percent:data.percent, notes:data.notes };
-    if(tabKey === 'fish') return { dateAdded:data.dateAdded, species:data.species, name:data.name, quantity:data.quantity, notes:data.notes };
+    if(tabKey === 'fish') return { dateAdded:data.dateAdded, species:data.species, name:data.name, quantity:data.quantity, cost:data.cost, notes:data.notes };
     if(tabKey === 'equipment') return { date:data.date, item:data.item, cost:data.cost, wattage:data.wattage, hoursPerDay:data.hoursPerDay, notes:data.notes };
     return { date:data.date, category:data.category, item:data.item, cost:data.cost, notes:data.notes };
   }
@@ -1011,6 +1023,7 @@
       fishList.forEach(function(f){ if(f.species) set[f.species.toLowerCase()] = true; });
       return Object.keys(set).length;
     })();
+    var fishSpend = fishList.reduce(function(sum,f){ return sum + (parseFloat(f.cost)||0); }, 0);
 
     var totalSpend = equipment.reduce(function(sum,e){ return sum + (parseFloat(e.cost)||0); }, 0);
 
@@ -1036,7 +1049,7 @@
       statTile('Last water change', lastChange ? daySummary(changeDays) : 'Never', changeStatus,
         lastChange ? '' : 'Log your first change', renderSparkline(changes.slice(0,10).reverse().map(function(c){ return num(c.percent); }))) +
       statTile('Fish in tank', String(fishCount), null,
-        speciesCount ? (speciesCount + (speciesCount===1?' species':' species')) : 'None added yet', '') +
+        speciesCount ? (speciesCount + (speciesCount===1?' species':' species') + (fishSpend ? (' · $'+fishSpend.toFixed(2)+' total') : '')) : 'None added yet', '') +
       statTile('Equipment logged', String(equipment.length), null,
         totalSpend ? ('$'+totalSpend.toFixed(2)+' total') : 'No purchases yet', '') +
       statTile('Expenses logged', String(expenses.length), null,
