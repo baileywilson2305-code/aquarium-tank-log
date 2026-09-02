@@ -20,10 +20,11 @@ export async function onRequestPost({ request, env }) {
 
   const id = uid();
   const quantity = num(body.quantity) ?? 1;
+  const cost = num(body.cost);
   await env.DB.prepare(
     `INSERT INTO fish (id, date_added, species, name, quantity, cost, notes, tank_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(id, str(body.dateAdded), str(body.species), str(body.name), quantity, num(body.cost), str(body.notes), tankId)
+    .bind(id, str(body.dateAdded), str(body.species), str(body.name), quantity, cost, str(body.notes), tankId)
     .run();
 
   return json({
@@ -32,7 +33,7 @@ export async function onRequestPost({ request, env }) {
     species: str(body.species),
     name: str(body.name),
     quantity,
-    cost: num(body.cost),
+    cost,
     notes: str(body.notes),
   }, 201);
 }
