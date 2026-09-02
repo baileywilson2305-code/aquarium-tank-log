@@ -1,5 +1,10 @@
 import { json, errorResponse, num, str, readJson } from '../_utils.js';
 
+export async function onRequestDelete({ params, env }) {
+  await env.DB.prepare('DELETE FROM expenses WHERE id = ?').bind(params.id).run();
+  return json({ ok: true });
+}
+
 export async function onRequestPut({ params, request, env }) {
   const body = await readJson(request);
   if (!body || !str(body.date) || !str(body.item)) {
@@ -20,9 +25,4 @@ export async function onRequestPut({ params, request, env }) {
     cost: num(body.cost),
     notes: str(body.notes),
   });
-}
-
-export async function onRequestDelete({ params, env }) {
-  await env.DB.prepare('DELETE FROM expenses WHERE id = ?').bind(params.id).run();
-  return json({ ok: true });
 }
